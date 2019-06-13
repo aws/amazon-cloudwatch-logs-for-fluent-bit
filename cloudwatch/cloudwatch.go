@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
@@ -39,6 +40,7 @@ const (
 type CloudWatchLogsClient interface {
 	CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error)
 	CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput) (*cloudwatchlogs.CreateLogStreamOutput, error)
+	DescribeLogStreams(input *cloudwatchlogs.DescribeLogStreamsInput) (*cloudwatchlogs.DescribeLogStreamsOutput, error)
 	PutLogEvents(input *cloudwatchlogs.PutLogEventsInput) (*cloudwatchlogs.PutLogEventsOutput, error)
 }
 
@@ -50,25 +52,51 @@ type logStream struct {
 }
 
 type OutputPlugin struct {
-	region          string
 	logGroupName    string
 	logStreamPrefix string
+	logStreamName   string
+	logKey          string
 	client          CloudWatchLogsClient
 	streams         map[string]*logStream
 	backoff         *plugins.Backoff
 	timer           *plugins.Timeout
 }
 
+type OutputPluginConfig struct {
+	Region          string
+	LogGroupName    string
+	LogStreamPrefix string
+	LogStreamName   string
+	LogKey          string
+	RoleARN         string
+	AutoCreateGroup bool
+}
+
+func (config OutputPluginConfig) Validate() error {
+	errorStr := "%s is a required parameter"
+	if config.Region == "" {
+		return fmt.Errorf(errorStr, "region")
+	}
+	if config.LogGroupName == "" {
+		return fmt.Errorf(errorStr, "log_group_name")
+	}
+	if config.LogStreamName == "" && config.LogStreamPrefix == "" {
+		return fmt.Errorf("log_stream_name or log_stream_prefix is required")
+	}
+
+	return nil
+}
+
 // NewOutputPlugin creates a OutputPlugin object
-func NewOutputPlugin(region string, logGroupName string, logStreamPrefix string, roleARN string, autoCreateGroup bool) (*OutputPlugin, error) {
+func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(region),
+		Region: aws.String(config.Region),
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	client := newCloudWatchLogsClient(roleARN, sess)
+	client := newCloudWatchLogsClient(config.RoleARN, sess)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %v\n", d)
@@ -80,17 +108,18 @@ func NewOutputPlugin(region string, logGroupName string, logStreamPrefix string,
 		return nil, err
 	}
 
-	if autoCreateGroup {
-		err = createLogGroup(logGroupName, client)
+	if config.AutoCreateGroup {
+		err = createLogGroup(config.LogGroupName, client)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &OutputPlugin{
-		region:          region,
-		logGroupName:    logGroupName,
-		logStreamPrefix: logStreamPrefix,
+		logGroupName:    config.LogGroupName,
+		logStreamPrefix: config.LogStreamPrefix,
+		logStreamName:   config.LogStreamName,
+		logKey:          config.LogKey,
 		client:          client,
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
@@ -107,22 +136,31 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session) *cloudwatchl
 	return cloudwatchlogs.New(sess)
 }
 
-func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) (int, error) {
-	data, retCode, err := output.processRecord(record)
+// AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
+// the return value is one of: FLB_OK, FLB_RETRY
+// API Errors lead to an FLB_RETRY, and all other errors are logged, the record is discarded and FLB_OK is returned
+func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) int {
+	data, err := output.processRecord(record)
 	if err != nil {
-		return retCode, err
+		logrus.Errorf("[cloudwatch] %v\n", err)
+		// discard this single bad record and let the batch continue
+		return fluentbit.FLB_OK
 	}
 	event := string(data)
 
 	stream, err := output.getLogStream(tag)
 	if err != nil {
-		return fluentbit.FLB_ERROR, err
+		logrus.Errorf("[cloudwatch] Error: %v\n", err)
+		// an error means that the log stream was not created; this is retryable
+		return fluentbit.FLB_RETRY
 	}
 
 	if len(stream.logEvents) == maximumLogEventsPerPut || (stream.currentByteLength+cloudwatchLen(event)) >= maximumBytesPerPut {
 		err = output.putLogEvents(stream)
 		if err != nil {
-			return fluentbit.FLB_ERROR, err
+			logrus.Errorf("[cloudwatch] %v\n", err)
+			// send failures are retryable
+			return fluentbit.FLB_RETRY
 		}
 	}
 
@@ -131,7 +169,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		Timestamp: aws.Int64(timestamp.Unix()),
 	})
 	stream.currentByteLength += cloudwatchLen(event)
-	return fluentbit.FLB_ERROR, nil
+	return fluentbit.FLB_OK
 }
 
 func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
@@ -139,13 +177,65 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 	stream, ok := output.streams[tag]
 	if !ok {
 		// stream doesn't exist, create it
-		return output.createStream(output.logStreamPrefix+tag, tag)
+		stream, err := output.createStream(tag)
+		if err != nil {
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+					// existing stream
+					return output.existingLogStream(tag, nil)
+				}
+			}
+		}
+
+		return stream, err
 	}
 
 	return stream, nil
 }
 
-func (output *OutputPlugin) createStream(name, tag string) (*logStream, error) {
+func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*logStream, error) {
+	name := output.getStreamName(tag)
+	resp, err := output.client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
+		LogGroupName:        aws.String(output.logGroupName),
+		LogStreamNamePrefix: aws.String(name),
+		NextToken:           nextToken,
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, result := range resp.LogStreams {
+		if aws.StringValue(result.LogStreamName) == name {
+			stream := &logStream{
+				logStreamName:     name,
+				logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
+				nextSequenceToken: result.UploadSequenceToken,
+			}
+
+			output.streams[tag] = stream
+
+			return stream, nil
+		}
+	}
+
+	if resp.NextToken != nil {
+		return output.existingLogStream(tag, resp.NextToken)
+	}
+
+	return nil, fmt.Errorf("Error: Does not compute: Log Stream %s could not be created, but also could not be found in the log group.", name)
+}
+
+func (output *OutputPlugin) getStreamName(tag string) string {
+	if output.logStreamPrefix != "" {
+		return output.logStreamPrefix + tag
+	} else {
+		return output.logStreamName
+	}
+}
+
+func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
+	name := output.getStreamName(tag)
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(output.logGroupName),
 		LogStreamName: aws.String(name),
@@ -174,22 +264,45 @@ func createLogGroup(name string, client CloudWatchLogsClient) error {
 	return err
 }
 
-func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, int, error) {
+func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, error) {
 	var err error
 	record, err = plugins.DecodeMap(record)
 	if err != nil {
 		logrus.Debugf("[cloudwatch] Failed to decode record: %v\n", record)
-		return nil, fluentbit.FLB_ERROR, err
+		return nil, err
 	}
 
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
 	data, err := json.Marshal(record)
 	if err != nil {
 		logrus.Debugf("[cloudwatch] Failed to marshal record: %v\n", record)
-		return nil, fluentbit.FLB_ERROR, err
+		return nil, err
 	}
 
-	return data, fluentbit.FLB_OK, nil
+	return data, nil
+}
+
+// Implements the log_key option, which allows customers to only send the value of a given key to CW Logs
+func logKey(record map[interface{}]interface{}, logKey string) (*interface{}, error) {
+	for key, val := range record {
+		var currentKey string
+		switch t := key.(type) {
+		case []byte:
+			currentKey = string(t)
+		case string:
+			currentKey = t
+		default:
+			logrus.Debugf("[go plugin]: Unable to determine type of key %v\n", t)
+			continue
+		}
+
+		if logKey == currentKey {
+			return &val, nil
+		}
+
+	}
+
+	return nil, fmt.Errorf("Failed to find key %s specified by log_key option in log record: %v", logKey, record)
 }
 
 func (output *OutputPlugin) Flush(tag string) error {
@@ -201,7 +314,6 @@ func (output *OutputPlugin) Flush(tag string) error {
 }
 
 func (output *OutputPlugin) putLogEvents(stream *logStream) error {
-	fmt.Println("Sending to CloudWatch")
 	response, err := output.client.PutLogEvents(&cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     stream.logEvents,
 		LogGroupName:  aws.String(output.logGroupName),
@@ -209,10 +321,9 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 		SequenceToken: stream.nextSequenceToken,
 	})
 	if err != nil {
-		fmt.Println(err)
 		return err
 	}
-	fmt.Printf("Sent %d events to CloudWatch\n", len(stream.logEvents))
+	logrus.Debugf("Sent %d events to CloudWatch\n", len(stream.logEvents))
 
 	stream.nextSequenceToken = response.NextSequenceToken
 	stream.logEvents = stream.logEvents[:0]

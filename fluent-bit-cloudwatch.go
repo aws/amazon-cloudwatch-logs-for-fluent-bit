@@ -25,6 +25,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+import "strings"
 
 var (
 	cloudwatchLogs *cloudwatch.OutputPlugin
@@ -35,25 +36,49 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 	return output.FLBPluginRegister(ctx, "cloudwatch", "AWS CloudWatch Fluent Bit Plugin!")
 }
 
+func getConfiguration(ctx unsafe.Pointer) cloudwatch.OutputPluginConfig {
+	config := cloudwatch.OutputPluginConfig{}
+	config.LogGroupName = output.FLBPluginConfigKey(ctx, "log_group_name")
+	logrus.Infof("[cloudwatch] plugin parameter log_group = '%s'\n", config.LogGroupName)
+	config.LogStreamPrefix = output.FLBPluginConfigKey(ctx, "log_stream_prefix")
+	logrus.Infof("[cloudwatch] plugin parameter log_stream_prefix = '%s'\n", config.LogStreamPrefix)
+	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")
+	logrus.Infof("[cloudwatch] plugin parameter log_stream = '%s'\n", config.LogStreamName)
+	config.Region = output.FLBPluginConfigKey(ctx, "region")
+	logrus.Infof("[cloudwatch] plugin parameter = '%s'\n", config.Region)
+	config.LogKey = output.FLBPluginConfigKey(ctx, "log_key")
+	logrus.Infof("[cloudwatch] plugin parameter log_key = '%s'\n", config.LogKey)
+	config.RoleARN = output.FLBPluginConfigKey(ctx, "role_arn")
+	logrus.Infof("[cloudwatch] plugin parameter role_arn = '%s'\n", config.RoleARN)
+	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
+	logrus.Infof("[cloudwatch] plugin parameter auto_create_group = '%s'\n", config.AutoCreateGroup)
+
+	return config
+}
+
+func getBoolParam(ctx unsafe.Pointer, param string, defaultVal bool) bool {
+	val := strings.ToLower(output.FLBPluginConfigKey(ctx, param))
+	if val == "true" {
+		return true
+	} else if val == "false" {
+		return false
+	} else {
+		return defaultVal
+	}
+}
+
 //export FLBPluginInit
 func FLBPluginInit(ctx unsafe.Pointer) int {
-	logGroup := output.FLBPluginConfigKey(ctx, "log_group")
-	fmt.Printf("[cloudwatch] plugin parameter log_group = '%s'\n", logGroup)
-	logStreamPrefix := output.FLBPluginConfigKey(ctx, "log_stream_prefix")
-	fmt.Printf("[cloudwatch] plugin parameter log_stream_prefix = '%s'\n", logStreamPrefix)
-	region := output.FLBPluginConfigKey(ctx, "region")
-	fmt.Printf("[cloudwatch] plugin parameter = '%s'\n", region)
-	roleARN := output.FLBPluginConfigKey(ctx, "role_arn")
-	logrus.Infof("[firehose] plugin parameter role_arn = '%s'\n", roleARN)
-
-	if logGroup == "" || logStreamPrefix == "" || region == "" {
+	config := getConfiguration(ctx)
+	err := config.Validate()
+	if err != nil {
+		logrus.Error(err)
 		return output.FLB_ERROR
 	}
 
-	var err error
-	cloudwatchLogs, err = cloudwatch.NewOutputPlugin(region, logGroup, logStreamPrefix, roleARN, true)
+	cloudwatchLogs, err = cloudwatch.NewOutputPlugin(config)
 	if err != nil {
-		fmt.Println(err)
+		logrus.Error(err)
 		return output.FLB_ERROR
 	}
 	return output.FLB_OK
@@ -91,9 +116,8 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 			timestamp = time.Now()
 		}
 
-		retCode, err := cloudwatchLogs.AddEvent(fluentTag, record, timestamp)
-		if err != nil {
-			logrus.Error(err)
+		retCode := cloudwatchLogs.AddEvent(fluentTag, record, timestamp)
+		if retCode != output.FLB_OK {
 			return retCode
 		}
 		count++
