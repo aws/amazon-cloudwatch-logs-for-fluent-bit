@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch"
+	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	"github.com/fluent/fluent-bit-go/output"
 
 	"github.com/sirupsen/logrus"
@@ -69,6 +70,8 @@ func getBoolParam(ctx unsafe.Pointer, param string, defaultVal bool) bool {
 
 //export FLBPluginInit
 func FLBPluginInit(ctx unsafe.Pointer) int {
+	plugins.SetupLogger()
+
 	config := getConfiguration(ctx)
 	err := config.Validate()
 	if err != nil {
