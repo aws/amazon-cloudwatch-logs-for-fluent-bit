@@ -120,7 +120,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 				if awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
 					return nil, err
 				}
-				logrus.Info("Log group %s already exists", config.LogGroupName)
+				logrus.Infof("[cloudwatch] Log group %s already exists\n", config.LogGroupName)
 			} else {
 				return nil, err
 			}
@@ -266,6 +266,7 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	}
 
 	output.streams[tag] = stream
+	logrus.Debugf("[cloudwatch] Created log stream %s", name)
 
 	return stream, nil
 }

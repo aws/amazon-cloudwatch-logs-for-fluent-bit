@@ -98,7 +98,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 	dec := output.NewDecoder(data, int(length))
 
 	fluentTag := C.GoString(tag)
-	logrus.Debugf("[firehose] Found logs with tag: %s\n", fluentTag)
+	logrus.Debugf("[cloudwatch] Found logs with tag: %s\n", fluentTag)
 
 	for {
 		// Extract Record
@@ -132,7 +132,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 		return output.FLB_RETRY
 	}
 
-	logrus.Debugf("[firehose] Processed %d events with tag %s\n", count, fluentTag)
+	logrus.Debugf("[cloudwatch] Processed %d events with tag %s\n", count, fluentTag)
 
 	// Return options:
 	//
