@@ -16,6 +16,7 @@ package cloudwatch
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -348,6 +349,10 @@ func (output *OutputPlugin) Flush(tag string) error {
 }
 
 func (output *OutputPlugin) putLogEvents(stream *logStream) error {
+	// Log events in a single PutLogEvents request must be in chronological order.
+	sort.Slice(stream.logEvents, func(i, j int) bool {
+		return aws.Int64Value(stream.logEvents[i].Timestamp) < aws.Int64Value(stream.logEvents[j].Timestamp)
+	})
 	response, err := output.client.PutLogEvents(&cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     stream.logEvents,
 		LogGroupName:  aws.String(output.logGroupName),
