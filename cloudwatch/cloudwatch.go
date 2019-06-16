@@ -105,7 +105,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	client := newCloudWatchLogsClient(config.RoleARN, sess)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %v\n", d)
+		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %s\n", d.String())
 		logrus.Error("[cloudwatch] Quitting Fluent Bit")
 		os.Exit(1)
 	})
@@ -208,6 +208,7 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 }
 
 func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*logStream, error) {
+	output.timer.Check()
 	name := output.getStreamName(tag)
 	resp, err := output.client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName:        aws.String(output.logGroupName),
@@ -219,7 +220,7 @@ func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*l
 		output.timer.Start()
 		return nil, err
 	}
-	output.timer.Check()
+	output.timer.Reset()
 
 	for _, result := range resp.LogStreams {
 		if aws.StringValue(result.LogStreamName) == name {
@@ -252,6 +253,7 @@ func (output *OutputPlugin) getStreamName(tag string) string {
 }
 
 func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
+	output.timer.Check()
 	name := output.getStreamName(tag)
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(output.logGroupName),

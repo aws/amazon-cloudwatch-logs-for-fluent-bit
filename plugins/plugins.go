@@ -90,6 +90,7 @@ type Timeout struct {
 // this method has no effect if the timer has already been started
 func (t *Timeout) Start() {
 	if t.enabled && !t.ticking {
+		logrus.Debug("Starting timeout")
 		t.ticking = true
 		t.stopTime = time.Now().Add(t.duration)
 	}
@@ -102,6 +103,8 @@ func (t *Timeout) Reset() {
 
 // Check the timer to see if its timed out
 func (t *Timeout) Check() {
+	logrus.Debug("Checking timeout")
+	logrus.Debugf("%s left", t.stopTime.Sub(time.Now()).String())
 	if t.enabled && t.ticking {
 		if t.stopTime.Before(time.Now()) {
 			// run the timeout function
