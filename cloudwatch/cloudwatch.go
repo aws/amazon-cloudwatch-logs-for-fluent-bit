@@ -180,7 +180,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 
 	stream.logEvents = append(stream.logEvents, &cloudwatchlogs.InputLogEvent{
 		Message:   aws.String(event),
-		Timestamp: aws.Int64(timestamp.Unix()),
+		Timestamp: aws.Int64(timestamp.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
 	})
 	stream.currentByteLength += cloudwatchLen(event)
 	return fluentbit.FLB_OK
@@ -359,6 +359,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 		LogStreamName: aws.String(stream.logStreamName),
 		SequenceToken: stream.nextSequenceToken,
 	})
+	logrus.Debug(*response)
 	if err != nil {
 		return err
 	}

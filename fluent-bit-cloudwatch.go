@@ -112,7 +112,7 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 		case output.FLBTime:
 			timestamp = tts.Time
 		case uint64:
-			// From our observation, when ts is of type uint64 it appears to
+			// when ts is of type uint64 it appears to
 			// be the amount of seconds since unix epoch.
 			timestamp = time.Unix(int64(tts), 0)
 		default:
