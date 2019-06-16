@@ -119,6 +119,7 @@ func NewTimeout(timeoutFunc func(duration time.Duration)) (*Timeout, error) {
 		if err != nil {
 			return nil, err
 		}
+		logrus.Debugf("Configuring timer with timeout of %d", duration)
 		return &Timeout{
 			timeoutFunc: timeoutFunc,
 			duration:    duration,

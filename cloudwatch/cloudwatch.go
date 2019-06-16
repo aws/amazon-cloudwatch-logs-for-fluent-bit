@@ -126,6 +126,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 				return nil, err
 			}
 		}
+		logrus.Infof("Created log group %s\n", config.LogGroupName)
 	}
 
 	return &OutputPlugin{
@@ -134,7 +135,6 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logStreamName:   config.LogStreamName,
 		logKey:          config.LogKey,
 		client:          client,
-		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
 	}, nil
@@ -216,8 +216,10 @@ func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*l
 	})
 
 	if err != nil {
+		output.timer.Start()
 		return nil, err
 	}
+	output.timer.Check()
 
 	for _, result := range resp.LogStreams {
 		if aws.StringValue(result.LogStreamName) == name {
@@ -257,8 +259,10 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	})
 
 	if err != nil {
+		output.timer.Start()
 		return nil, err
 	}
+	output.timer.Reset()
 
 	stream := &logStream{
 		logStreamName:     name,
@@ -349,6 +353,8 @@ func (output *OutputPlugin) Flush(tag string) error {
 }
 
 func (output *OutputPlugin) putLogEvents(stream *logStream) error {
+	output.timer.Check()
+
 	// Log events in a single PutLogEvents request must be in chronological order.
 	sort.Slice(stream.logEvents, func(i, j int) bool {
 		return aws.Int64Value(stream.logEvents[i].Timestamp) < aws.Int64Value(stream.logEvents[j].Timestamp)
@@ -359,10 +365,11 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 		LogStreamName: aws.String(stream.logStreamName),
 		SequenceToken: stream.nextSequenceToken,
 	})
-	logrus.Debug(*response)
 	if err != nil {
+		output.timer.Start()
 		return err
 	}
+	output.timer.Reset()
 	logrus.Debugf("Sent %d events to CloudWatch\n", len(stream.logEvents))
 
 	stream.nextSequenceToken = response.NextSequenceToken
@@ -370,6 +377,20 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	stream.currentByteLength = 0
 
 	return nil
+}
+
+func processRejectedEventsInfo(response *cloudwatchlogs.PutLogEventsOutput) {
+	if response.RejectedLogEventsInfo != nil {
+		if response.RejectedLogEventsInfo.ExpiredLogEventEndIndex != nil {
+			logrus.Warnf("[cloudwatch] %d log events were marked as expired by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.ExpiredLogEventEndIndex))
+		}
+		if response.RejectedLogEventsInfo.TooNewLogEventStartIndex != nil {
+			logrus.Warnf("[cloudwatch] %d log events were marked as too new by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.TooNewLogEventStartIndex))
+		}
+		if response.RejectedLogEventsInfo.TooOldLogEventEndIndex != nil {
+			logrus.Warnf("[cloudwatch] %d log events were marked as too old by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.TooOldLogEventEndIndex))
+		}
+	}
 }
 
 // effectiveLen counts the effective number of bytes in the string, after
