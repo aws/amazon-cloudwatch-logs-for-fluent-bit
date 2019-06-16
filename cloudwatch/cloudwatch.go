@@ -116,7 +116,14 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	if config.AutoCreateGroup {
 		err = createLogGroup(config.LogGroupName, client)
 		if err != nil {
-			return nil, err
+			if awsErr, ok := err.(awserr.Error); ok {
+				if awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+					return nil, err
+				}
+				logrus.Info("Log group %s already exists", config.LogGroupName)
+			} else {
+				return nil, err
+			}
 		}
 	}
 

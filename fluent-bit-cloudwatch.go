@@ -46,7 +46,7 @@ func getConfiguration(ctx unsafe.Pointer) cloudwatch.OutputPluginConfig {
 	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")
 	logrus.Infof("[cloudwatch] plugin parameter log_stream = '%s'\n", config.LogStreamName)
 	config.Region = output.FLBPluginConfigKey(ctx, "region")
-	logrus.Infof("[cloudwatch] plugin parameter = '%s'\n", config.Region)
+	logrus.Infof("[cloudwatch] plugin parameter region = '%s'\n", config.Region)
 	config.LogKey = output.FLBPluginConfigKey(ctx, "log_key")
 	logrus.Infof("[cloudwatch] plugin parameter log_key = '%s'\n", config.LogKey)
 	config.RoleARN = output.FLBPluginConfigKey(ctx, "role_arn")
