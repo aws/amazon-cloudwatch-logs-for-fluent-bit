@@ -16,6 +16,7 @@ package cloudwatch
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -37,7 +38,8 @@ const (
 	maximumLogEventsPerPut = 10000
 )
 
-type CloudWatchLogsClient interface {
+// LogsClient contains the CloudWatch API calls used by this plugin
+type LogsClient interface {
 	CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error)
 	CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput) (*cloudwatchlogs.CreateLogStreamOutput, error)
 	DescribeLogStreams(input *cloudwatchlogs.DescribeLogStreamsInput) (*cloudwatchlogs.DescribeLogStreamsOutput, error)
@@ -51,17 +53,19 @@ type logStream struct {
 	logStreamName     string
 }
 
+// OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
 	logGroupName    string
 	logStreamPrefix string
 	logStreamName   string
 	logKey          string
-	client          CloudWatchLogsClient
+	client          LogsClient
 	streams         map[string]*logStream
 	backoff         *plugins.Backoff
 	timer           *plugins.Timeout
 }
 
+// OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
 type OutputPluginConfig struct {
 	Region          string
 	LogGroupName    string
@@ -72,6 +76,7 @@ type OutputPluginConfig struct {
 	AutoCreateGroup bool
 }
 
+// Validate checks the configuration input for an OutputPlugin instances
 func (config OutputPluginConfig) Validate() error {
 	errorStr := "%s is a required parameter"
 	if config.Region == "" {
@@ -146,11 +151,12 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		// discard this single bad record and let the batch continue
 		return fluentbit.FLB_OK
 	}
-	event := string(data)
+
+	event := logString(data)
 
 	stream, err := output.getLogStream(tag)
 	if err != nil {
-		logrus.Errorf("[cloudwatch] Error: %v\n", err)
+		logrus.Errorf("[cloudwatch] %v\n", err)
 		// an error means that the log stream was not created; this is retryable
 		return fluentbit.FLB_RETRY
 	}
@@ -223,15 +229,16 @@ func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*l
 		return output.existingLogStream(tag, resp.NextToken)
 	}
 
-	return nil, fmt.Errorf("Error: Does not compute: Log Stream %s could not be created, but also could not be found in the log group.", name)
+	return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
 }
 
 func (output *OutputPlugin) getStreamName(tag string) string {
+	name := output.logStreamName
 	if output.logStreamPrefix != "" {
-		return output.logStreamPrefix + tag
-	} else {
-		return output.logStreamName
+		name = output.logStreamPrefix + tag
 	}
+
+	return name
 }
 
 func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
@@ -256,12 +263,18 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func createLogGroup(name string, client CloudWatchLogsClient) error {
+func createLogGroup(name string, client LogsClient) error {
 	_, err := client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(name),
 	})
 
 	return err
+}
+
+// Takes the byte slice and returns a string
+// Also removes leading and trailing whitespace
+func logString(record []byte) string {
+	return strings.TrimSpace(string(record))
 }
 
 func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, error) {
@@ -273,9 +286,21 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	}
 
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
-	data, err := json.Marshal(record)
+	var data []byte
+
+	if output.logKey != "" {
+		log, err := logKey(record, output.logKey)
+		if err != nil {
+			return nil, err
+		}
+
+		data, err = json.Marshal(log)
+	} else {
+		data, err = json.Marshal(record)
+	}
+
 	if err != nil {
-		logrus.Debugf("[cloudwatch] Failed to marshal record: %v\n", record)
+		logrus.Debugf("[cloudwatch] Failed to marshal record: %v\nLog Key: %s\n", record, output.logKey)
 		return nil, err
 	}
 
@@ -305,6 +330,7 @@ func logKey(record map[interface{}]interface{}, logKey string) (*interface{}, er
 	return nil, fmt.Errorf("Failed to find key %s specified by log_key option in log record: %v", logKey, record)
 }
 
+// Flush sends the current buffer of records (for the stream that corresponds with the given tag)
 func (output *OutputPlugin) Flush(tag string) error {
 	stream, err := output.getLogStream(tag)
 	if err != nil {

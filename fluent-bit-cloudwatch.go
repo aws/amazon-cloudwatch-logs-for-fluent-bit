@@ -51,7 +51,7 @@ func getConfiguration(ctx unsafe.Pointer) cloudwatch.OutputPluginConfig {
 	config.RoleARN = output.FLBPluginConfigKey(ctx, "role_arn")
 	logrus.Infof("[cloudwatch] plugin parameter role_arn = '%s'\n", config.RoleARN)
 	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
-	logrus.Infof("[cloudwatch] plugin parameter auto_create_group = '%s'\n", config.AutoCreateGroup)
+	logrus.Infof("[cloudwatch] plugin parameter auto_create_group = '%v'\n", config.AutoCreateGroup)
 
 	return config
 }
