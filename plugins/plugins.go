@@ -117,8 +117,8 @@ func (t *Timeout) Check() {
 // with a duration set from the env var
 // if the env var is not set, then a timer is returned that is disabled (it doesn't do anything)
 func NewTimeout(timeoutFunc func(duration time.Duration)) (*Timeout, error) {
-	if os.Getenv(sendFailureTimeoutEnvVar) != "" {
-		duration, err := time.ParseDuration(os.Getenv(sendFailureTimeoutEnvVar))
+	if timeout := os.Getenv(sendFailureTimeoutEnvVar); timeout != "" {
+		duration, err := time.ParseDuration(timeout)
 		if err != nil {
 			return nil, err
 		}
