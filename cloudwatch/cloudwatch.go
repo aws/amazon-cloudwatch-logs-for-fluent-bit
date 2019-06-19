@@ -39,6 +39,13 @@ const (
 	maximumLogEventsPerPut = 10000
 )
 
+const (
+	// Log stream objects that are empty and inactive for longer than the timeout get cleaned up
+	logStreamInactivityTimeout = time.Hour
+	// Check for expired log streams every 10 minutes
+	logStreamInactivityCheckInterval = 10
+)
+
 // LogsClient contains the CloudWatch API calls used by this plugin
 type LogsClient interface {
 	CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error)
@@ -52,6 +59,18 @@ type logStream struct {
 	currentByteLength int
 	nextSequenceToken *string
 	logStreamName     string
+	expiration        time.Time
+}
+
+func (stream *logStream) isExpired() bool {
+	if len(stream.logEvents) == 0 && stream.expiration.Before(time.Now()) {
+		return true
+	}
+	return false
+}
+
+func (stream *logStream) updateExpiration() {
+	stream.expiration = time.Now().Add(logStreamInactivityTimeout)
 }
 
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
@@ -199,6 +218,22 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 	return fluentbit.FLB_OK
 }
 
+// This plugin tracks CW Log streams
+// We need to periodically delete any streams that haven't been written to in a while
+// Because each stream incurs some memory for its buffer of log events
+// (Which would be empty for an unused stream)
+func (output *OutputPlugin) cleanUpExpiredLogStreams() {
+	if (time.Now().Minute() % logStreamInactivityCheckInterval) == 0 {
+		logrus.Debug("[cloudwatch] Checking for expired log streams")
+		for tag, stream := range output.streams {
+			if stream.isExpired() {
+				logrus.Debugf("[cloudwatch] Removing internal buffer for log stream %s; the stream has not been written to for %s", stream.logStreamName, logStreamInactivityTimeout.String())
+				delete(output.streams, tag)
+			}
+		}
+	}
+}
+
 func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 	// find log stream by tag
 	stream, ok := output.streams[tag]
@@ -213,7 +248,6 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 				}
 			}
 		}
-
 		return stream, err
 	}
 
@@ -240,6 +274,7 @@ func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
 				}
 
 				output.streams[tag] = stream
+				stream.updateExpiration() // initialize
 			}
 		}
 
@@ -299,6 +334,7 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	}
 
 	output.streams[tag] = stream
+	stream.updateExpiration() // initialize
 	logrus.Debugf("[cloudwatch] Created log stream %s", name)
 
 	return stream, nil
@@ -373,6 +409,8 @@ func logKey(record map[interface{}]interface{}, logKey string) (*interface{}, er
 
 // Flush sends the current buffer of records (for the stream that corresponds with the given tag)
 func (output *OutputPlugin) Flush(tag string) error {
+	output.cleanUpExpiredLogStreams() // will periodically clean up, otherwise is no-op
+
 	stream, err := output.getLogStream(tag)
 	if err != nil {
 		return err
@@ -382,6 +420,7 @@ func (output *OutputPlugin) Flush(tag string) error {
 
 func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	output.timer.Check()
+	stream.updateExpiration()
 
 	// Log events in a single PutLogEvents request must be in chronological order.
 	sort.Slice(stream.logEvents, func(i, j int) bool {
