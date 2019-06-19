@@ -211,7 +211,7 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 			if awsErr, ok := err.(awserr.Error); ok {
 				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
 					// existing stream
-					return output.existingLogStream(tag, nil)
+					return output.existingLogStream(tag)
 				}
 			}
 		}
@@ -222,9 +222,40 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*logStream, error) {
-	output.timer.Check()
+func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
+	var nextToken *string
+	var stream *logStream
 	name := output.getStreamName(tag)
+
+	for stream == nil {
+		resp, err := output.describeLogStreams(name, nextToken)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, result := range resp.LogStreams {
+			if aws.StringValue(result.LogStreamName) == name {
+				stream = &logStream{
+					logStreamName:     name,
+					logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
+					nextSequenceToken: result.UploadSequenceToken,
+				}
+
+				output.streams[tag] = stream
+			}
+		}
+
+		if resp.NextToken == nil {
+			return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
+		}
+
+		nextToken = resp.NextToken
+	}
+	return stream, nil
+}
+
+func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
+	output.timer.Check()
 	resp, err := output.client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName:        aws.String(output.logGroupName),
 		LogStreamNamePrefix: aws.String(name),
@@ -237,25 +268,7 @@ func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*l
 	}
 	output.timer.Reset()
 
-	for _, result := range resp.LogStreams {
-		if aws.StringValue(result.LogStreamName) == name {
-			stream := &logStream{
-				logStreamName:     name,
-				logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
-				nextSequenceToken: result.UploadSequenceToken,
-			}
-
-			output.streams[tag] = stream
-
-			return stream, nil
-		}
-	}
-
-	if resp.NextToken == nil {
-		return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
-	}
-
-	return output.existingLogStream(tag, resp.NextToken)
+	return resp, err
 }
 
 func (output *OutputPlugin) getStreamName(tag string) string {
