@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/plugins"
@@ -75,6 +76,7 @@ type OutputPluginConfig struct {
 	LogKey          string
 	RoleARN         string
 	AutoCreateGroup bool
+	CWEndpoint      string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -102,7 +104,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		return nil, err
 	}
 
-	client := newCloudWatchLogsClient(config.RoleARN, sess)
+	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %s\n", d.String())
@@ -140,7 +142,20 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(roleARN string, sess *session.Session) *cloudwatchlogs.CloudWatchLogs {
+func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string) *cloudwatchlogs.CloudWatchLogs {
+	svcConfig := aws.Config{}
+	if endpoint != "" {
+		defaultResolver := endpoints.DefaultResolver()
+		cwCustomResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+			if service == "logs" {
+				return endpoints.ResolvedEndpoint{
+					URL: endpoint,
+				}, nil
+			}
+			return defaultResolver.EndpointFor(service, region, optFns...)
+		}
+		svcConfig.EndpointResolver = endpoints.ResolverFunc(cwCustomResolverFn)
+	}
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
 		return cloudwatchlogs.New(sess, &aws.Config{Credentials: creds})
@@ -236,11 +251,11 @@ func (output *OutputPlugin) existingLogStream(tag string, nextToken *string) (*l
 		}
 	}
 
-	if resp.NextToken != nil {
-		return output.existingLogStream(tag, resp.NextToken)
+	if resp.NextToken == nil {
+		return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
 	}
 
-	return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
+	return output.existingLogStream(tag, resp.NextToken)
 }
 
 func (output *OutputPlugin) getStreamName(tag string) string {
