@@ -396,8 +396,28 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 		SequenceToken: stream.nextSequenceToken,
 	})
 	if err != nil {
-		output.timer.Start()
-		return err
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == cloudwatchlogs.ErrCodeDataAlreadyAcceptedException {
+				// already submitted, just grab the correct sequence token
+				parts := strings.Split(awsErr.Message(), " ")
+				stream.nextSequenceToken = &parts[len(parts)-1]
+				stream.logEvents = stream.logEvents[:0]
+				stream.currentByteLength = 0
+				logrus.Infof("[cloudwatch] Encountered error %v; data already accepted, ignoring error\n", awsErr)
+				return nil
+			} else if awsErr.Code() == cloudwatchlogs.ErrCodeInvalidSequenceTokenException {
+				// sequence code is bad, grab the correct one and retry
+				parts := strings.Split(awsErr.Message(), " ")
+				stream.nextSequenceToken = &parts[len(parts)-1]
+
+				return output.putLogEvents(stream)
+			} else {
+				output.timer.Start()
+				return err
+			}
+		} else {
+			return err
+		}
 	}
 	output.timer.Reset()
 	logrus.Debugf("Sent %d events to CloudWatch\n", len(stream.logEvents))
