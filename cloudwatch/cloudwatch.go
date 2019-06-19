@@ -15,7 +15,6 @@ package cloudwatch
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 	"time"
@@ -108,8 +107,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %s\n", d.String())
-		logrus.Error("[cloudwatch] Quitting Fluent Bit")
-		os.Exit(1)
+		logrus.Fatal("[cloudwatch] Quitting Fluent Bit") // exit the plugin and kill Fluent Bit
 	})
 
 	if err != nil {
