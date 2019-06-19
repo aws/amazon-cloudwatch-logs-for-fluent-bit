@@ -35,7 +35,8 @@ const (
 	testLogGroup        = "my-logs"
 	testLogStreamPrefix = "my-prefix"
 	testTag             = "tag"
-	testNextToken       = "next token"
+	testNextToken       = "next-token"
+	testSequenceToken   = "sequence-token"
 )
 
 func TestAddEvent(t *testing.T) {
@@ -205,6 +206,93 @@ func TestAddEventAndFlush(t *testing.T) {
 		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(&cloudwatchlogs.PutLogEventsOutput{
+			NextSequenceToken: aws.String("token"),
+		}, nil),
+	)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		backoff:         plugins.NewBackoff(),
+		timer:           timer,
+		streams:         make(map[string]*logStream),
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(testTag, record, time.Now())
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	output.Flush(testTag)
+
+}
+
+func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
+	timer, _ := plugins.NewTimeout(func(d time.Duration) {
+		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
+		logrus.Error("[firehose] Quitting Fluent Bit")
+		os.Exit(1)
+	})
+
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeDataAlreadyAcceptedException, "Data already accepted; The next expected sequenceToken is: "+testSequenceToken, fmt.Errorf("API Error"))),
+	)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		backoff:         plugins.NewBackoff(),
+		timer:           timer,
+		streams:         make(map[string]*logStream),
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(testTag, record, time.Now())
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	output.Flush(testTag)
+
+}
+
+func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
+	timer, _ := plugins.NewTimeout(func(d time.Duration) {
+		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
+		logrus.Error("[firehose] Quitting Fluent Bit")
+		os.Exit(1)
+	})
+
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeInvalidSequenceTokenException, "The given sequenceToken is invalid; The next expected sequenceToken is: "+testSequenceToken, fmt.Errorf("API Error"))),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+			assert.Equal(t, aws.StringValue(input.SequenceToken), testSequenceToken, "Expected sequence token to match response from previous error")
 		}).Return(&cloudwatchlogs.PutLogEventsOutput{
 			NextSequenceToken: aws.String("token"),
 		}, nil),
