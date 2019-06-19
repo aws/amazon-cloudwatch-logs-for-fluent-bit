@@ -2,6 +2,10 @@
 
 A Fluent Bit output plugin for CloudWatch Logs
 
+#### Security disclosures
+
+If you think you’ve found a potential security issue, please do not post it in the Issues.  Instead, please follow the instructions [here](https://aws.amazon.com/security/vulnerability-reporting/) or email AWS security directly at [aws-security@amazon.com](mailto:aws-security@amazon.com).
+
 ### Usage
 
 Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
@@ -23,6 +27,7 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 * `log_key`: By default, the whole log record will be sent to CloudWatch. If you specify a key name with this option, then only the value of that key will be sent to CloudWatch. For example, if you are using the Fluentd Docker log driver, you can specify `log_key log` and only the log message will be sent to CloudWatch.
 * `role_arn`: ARN of an IAM role to assume (for cross account access).
 * `auto_create_group`: Automatically create the log group. Valid values are "true" or "false" (case insensitive). Defaults to false.
+* `endpoint`: Specify a custom endpoint for the CloudWatch Logs API.
 
 **Note**: The plugin will always create the log stream, if it does not exist.
 
@@ -33,6 +38,10 @@ This plugin requires the following permissions:
 * CreateLogStream
 * DescribeLogStreams
 * PutLogEvents
+
+### Credentials
+
+This plugin uses the AWS SDK Go, and uses its [default credential provider chain](https://docs.aws.amazon.com/sdk-for-go/v1/developer-guide/configuring-sdk.html). If you are using the plugin on Amazon EC2 or Amazon ECS, the plugin will use your EC2 instance role or ECS Task role permissions. The plugin can also retrieve credentials from a (shared credentials file)[https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html], or from the standard `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` environment variables. 
 
 ### Environment Variables
 
