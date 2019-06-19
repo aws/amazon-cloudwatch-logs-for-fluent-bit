@@ -272,7 +272,7 @@ func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
 					logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 					nextSequenceToken: result.UploadSequenceToken,
 				}
-
+				logrus.Debugf("[cloudwatch] Initializing internal buffer for exising log stream %s\n", name)
 				output.streams[tag] = stream
 				stream.updateExpiration() // initialize
 			}
@@ -332,7 +332,7 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 		logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 		nextSequenceToken: nil, // sequence token not required for a new log stream
 	}
-
+	logrus.Debugf("[cloudwatch] Created new log stream %s\n", name)
 	output.streams[tag] = stream
 	stream.updateExpiration() // initialize
 	logrus.Debugf("[cloudwatch] Created log stream %s", name)
