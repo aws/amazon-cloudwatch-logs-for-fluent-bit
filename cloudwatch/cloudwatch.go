@@ -160,7 +160,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 }
 
 func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string) *cloudwatchlogs.CloudWatchLogs {
-	svcConfig := aws.Config{}
+	svcConfig := &aws.Config{}
 	if endpoint != "" {
 		defaultResolver := endpoints.DefaultResolver()
 		cwCustomResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
@@ -175,10 +175,11 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 	}
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
-		return cloudwatchlogs.New(sess, &aws.Config{Credentials: creds})
+		svcConfig.Credentials = creds
+		return cloudwatchlogs.New(sess, svcConfig)
 	}
 
-	return cloudwatchlogs.New(sess)
+	return cloudwatchlogs.New(sess, svcConfig)
 }
 
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
