@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch/mock_cloudwatch"
+	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch/mock_cloudwatch"
-	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"

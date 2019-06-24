@@ -20,13 +20,13 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
-	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
@@ -176,7 +176,6 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
 		svcConfig.Credentials = creds
-		return cloudwatchlogs.New(sess, svcConfig)
 	}
 
 	return cloudwatchlogs.New(sess, svcConfig)

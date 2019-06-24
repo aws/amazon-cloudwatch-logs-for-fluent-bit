@@ -20,8 +20,8 @@ import (
 
 	"time"
 
-	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch"
-	"github.com/awslabs/amazon-cloudwatch-logs-for-fluent-bit/plugins"
+	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch"
+	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/plugins"
 	"github.com/fluent/fluent-bit-go/output"
 
 	"github.com/sirupsen/logrus"
