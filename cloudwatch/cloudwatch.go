@@ -75,14 +75,15 @@ func (stream *logStream) updateExpiration() {
 
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
-	logGroupName    string
-	logStreamPrefix string
-	logStreamName   string
-	logKey          string
-	client          LogsClient
-	streams         map[string]*logStream
-	backoff         *plugins.Backoff
-	timer           *plugins.Timeout
+	logGroupName                  string
+	logStreamPrefix               string
+	logStreamName                 string
+	logKey                        string
+	client                        LogsClient
+	streams                       map[string]*logStream
+	backoff                       *plugins.Backoff
+	timer                         *plugins.Timeout
+	nextLogStreamCleanUpCheckTime time.Time
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -156,6 +157,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		client:          client,
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 	}, nil
 }
 
@@ -223,7 +225,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 // Because each stream incurs some memory for its buffer of log events
 // (Which would be empty for an unused stream)
 func (output *OutputPlugin) cleanUpExpiredLogStreams() {
-	if (time.Now().Minute() % logStreamInactivityCheckInterval) == 0 {
+	if output.nextLogStreamCleanUpCheckTime.Before(time.Now()) {
 		logrus.Debug("[cloudwatch] Checking for expired log streams")
 		for tag, stream := range output.streams {
 			if stream.isExpired() {
@@ -231,6 +233,7 @@ func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 				delete(output.streams, tag)
 			}
 		}
+		output.nextLogStreamCleanUpCheckTime = time.Now().Add(logStreamInactivityCheckInterval)
 	}
 }
 
