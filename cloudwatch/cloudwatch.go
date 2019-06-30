@@ -43,7 +43,7 @@ const (
 	// Log stream objects that are empty and inactive for longer than the timeout get cleaned up
 	logStreamInactivityTimeout = time.Hour
 	// Check for expired log streams every 10 minutes
-	logStreamInactivityCheckInterval = 10
+	logStreamInactivityCheckInterval = 10 * time.Minute
 )
 
 // LogsClient contains the CloudWatch API calls used by this plugin
