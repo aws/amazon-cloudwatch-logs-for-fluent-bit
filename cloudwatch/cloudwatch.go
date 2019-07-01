@@ -278,10 +278,11 @@ func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
 				logrus.Debugf("[cloudwatch] Initializing internal buffer for exising log stream %s\n", name)
 				output.streams[tag] = stream
 				stream.updateExpiration() // initialize
+				break
 			}
 		}
 
-		if resp.NextToken == nil {
+		if stream == nil && resp.NextToken == nil {
 			return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
 		}
 
