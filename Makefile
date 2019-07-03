@@ -28,6 +28,12 @@ $(PLUGIN_BINARY): $(SOURCES)
 	go build -buildmode c-shared -o $(PLUGIN_BINARY) ./
 	@echo "Built Amazon CloudWatch Logs Fluent Bit Plugin"
 
+.PHONY: release
+release:
+	mkdir -p ./bin
+	go build -buildmode c-shared -o $(PLUGIN_BINARY) ./
+	@echo "Built Amazon CloudWatch Logs Fluent Bit Plugin"
+
 .PHONY: generate
 generate: $(SOURCES)
 	PATH=$(SCRIPT_PATH) go generate ./...
