@@ -63,6 +63,43 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
     delivery_stream my-stream
 ```
 
+### Fluent Bit Image built with plugins
+
+We distribute a container image with Fluent Bit and these plugins. There are image tags for `latest` and the version of Fluent Bit that is built in the image. The first release is Fluent Bit `1.2.0`.
+
+##### Docker Hub
+
+[amazon/aws-for-fluent-bit](https://hub.docker.com/r/amazon/aws-for-fluent-bit/tags)
+
+##### Amazon ECR
+
+We also provide images in Amazon ECR in each AWS Region for high availability.
+
+| Region         | Registry ID  | Full Image URI                                                          |
+|----------------|--------------|-------------------------------------------------------------------------|
+| us-east-1      | 906394416424 | 906394416424.dkr.us-east-1.amazonaws.com/aws-for-fluent-bit:latest      |
+| eu-west-1      | 906394416424 | 906394416424.dkr.eu-west-1.amazonaws.com/aws-for-fluent-bit:latest      |
+| us-west-1      | 906394416424 | 906394416424.dkr.us-west-1.amazonaws.com/aws-for-fluent-bit:latest      |
+| ap-southeast-1 | 906394416424 | 906394416424.dkr.ap-southeast-1.amazonaws.com/aws-for-fluent-bit:latest |
+| ap-northeast-1 | 906394416424 | 906394416424.dkr.ap-northeast-1.amazonaws.com/aws-for-fluent-bit:latest |
+| us-west-2      | 906394416424 | 906394416424.dkr.us-west-2.amazonaws.com/aws-for-fluent-bit:latest      |
+| sa-east-1      | 906394416424 | 906394416424.dkr.sa-east-1.amazonaws.com/aws-for-fluent-bit:latest      |
+| ap-southeast-2 | 906394416424 | 906394416424.dkr.ap-southeast-2.amazonaws.com/aws-for-fluent-bit:latest |
+| eu-central-1   | 906394416424 | 906394416424.dkr.eu-central-1.amazonaws.com/aws-for-fluent-bit:latest   |
+| ap-northeast-2 | 906394416424 | 906394416424.dkr.ap-northeast-2.amazonaws.com/aws-for-fluent-bit:latest |
+| ap-south-1     | 906394416424 | 906394416424.dkr.ap-south-1.amazonaws.com/aws-for-fluent-bit:latest     |
+| us-east-2      | 906394416424 | 906394416424.dkr.us-east-2.amazonaws.com/aws-for-fluent-bit:latest      |
+| ca-central-1   | 906394416424 | 906394416424.dkr.ca-central-1.amazonaws.com/aws-for-fluent-bit:latest   |
+| eu-west-2      | 906394416424 | 906394416424.dkr.eu-west-2.amazonaws.com/aws-for-fluent-bit:latest      |
+| eu-west-3      | 906394416424 | 906394416424.dkr.eu-west-3.amazonaws.com/aws-for-fluent-bit:latest      |
+| ap-northeast-3 | 906394416424 | 906394416424.dkr.ap-northeast-3.amazonaws.com/aws-for-fluent-bit:latest |
+| eu-north-1     | 906394416424 | 906394416424.dkr.eu-north-1.amazonaws.com/aws-for-fluent-bit:latest     |
+| ap-east-1      | 449074385750 | 449074385750.dkr.ap-east-1.amazonaws.com/aws-for-fluent-bit:latest      |
+| cn-north-1     | 128054284489 | 128054284489.dkr.cn-north-1.amazonaws.com/aws-for-fluent-bit:latest     |
+| cn-northwest-1 | 128054284489 | 128054284489.dkr.cn-northwest-1.amazonaws.com/aws-for-fluent-bit:latest |
+| us-gov-east-1  | 161423150738 | 161423150738.dkr.us-gov-east-1.amazonaws.com/aws-for-fluent-bit:latest  |
+| us-gov-west-1  | 161423150738 | 161423150738.dkr.us-gov-west-1.amazonaws.com/aws-for-fluent-bit:latest  |
+
 ## License
 
 This library is licensed under the Apache 2.0 License.
