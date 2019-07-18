@@ -57,10 +57,12 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
     Port        24224
 
 [OUTPUT]
-    Name   firehose
-    Match  *
-    region us-west-2
-    delivery_stream my-stream
+    Name cloudwatch
+    Match   *
+    region us-east-1
+    log_group_name fluent-bit-cloudwatch
+    log_stream_prefix from-fluent-bit-
+    auto_create_group true
 ```
 
 ### Fluent Bit Image built with plugins
