@@ -464,6 +464,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 			return err
 		}
 	}
+	output.processRejectedEventsInfo(response)
 	output.timer.Reset()
 	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch\n", output.PluginInstanceID, len(stream.logEvents))
 
