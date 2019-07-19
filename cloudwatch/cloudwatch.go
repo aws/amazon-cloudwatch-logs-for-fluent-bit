@@ -84,18 +84,20 @@ type OutputPlugin struct {
 	backoff                       *plugins.Backoff
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
+	PluginInstanceID              int
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
 type OutputPluginConfig struct {
-	Region          string
-	LogGroupName    string
-	LogStreamPrefix string
-	LogStreamName   string
-	LogKey          string
-	RoleARN         string
-	AutoCreateGroup bool
-	CWEndpoint      string
+	Region           string
+	LogGroupName     string
+	LogStreamPrefix  string
+	LogStreamName    string
+	LogKey           string
+	RoleARN          string
+	AutoCreateGroup  bool
+	CWEndpoint       string
+	PluginInstanceID int
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -126,8 +128,8 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[cloudwatch] timeout threshold reached: Failed to send logs for %s\n", d.String())
-		logrus.Fatal("[cloudwatch] Quitting Fluent Bit") // exit the plugin and kill Fluent Bit
+		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
+		logrus.Fatalf("[cloudwatch %d] Quitting Fluent Bit", config.PluginInstanceID) // exit the plugin and kill Fluent Bit
 	})
 
 	if err != nil {
@@ -141,12 +143,12 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 				if awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
 					return nil, err
 				}
-				logrus.Infof("[cloudwatch] Log group %s already exists\n", config.LogGroupName)
+				logrus.Infof("[cloudwatch %d] Log group %s already exists\n", config.PluginInstanceID, config.LogGroupName)
 			} else {
 				return nil, err
 			}
 		}
-		logrus.Infof("Created log group %s\n", config.LogGroupName)
+		logrus.Infof("[cloudwatch %d] Created log group %s\n", config.PluginInstanceID, config.LogGroupName)
 	}
 
 	return &OutputPlugin{
@@ -158,6 +160,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		timer:           timer,
 		streams:         make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
+		PluginInstanceID:              config.PluginInstanceID,
 	}, nil
 }
 
@@ -189,7 +192,7 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) int {
 	data, err := output.processRecord(record)
 	if err != nil {
-		logrus.Errorf("[cloudwatch] %v\n", err)
+		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// discard this single bad record and let the batch continue
 		return fluentbit.FLB_OK
 	}
@@ -198,7 +201,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 
 	stream, err := output.getLogStream(tag)
 	if err != nil {
-		logrus.Errorf("[cloudwatch] %v\n", err)
+		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// an error means that the log stream was not created; this is retryable
 		return fluentbit.FLB_RETRY
 	}
@@ -206,7 +209,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 	if len(stream.logEvents) == maximumLogEventsPerPut || (stream.currentByteLength+cloudwatchLen(event)) >= maximumBytesPerPut {
 		err = output.putLogEvents(stream)
 		if err != nil {
-			logrus.Errorf("[cloudwatch] %v\n", err)
+			logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 			// send failures are retryable
 			return fluentbit.FLB_RETRY
 		}
@@ -226,10 +229,10 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 // (Which would be empty for an unused stream)
 func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	if output.nextLogStreamCleanUpCheckTime.Before(time.Now()) {
-		logrus.Debug("[cloudwatch] Checking for expired log streams")
+		logrus.Debugf("[cloudwatch %d] Checking for expired log streams", output.PluginInstanceID)
 		for tag, stream := range output.streams {
 			if stream.isExpired() {
-				logrus.Debugf("[cloudwatch] Removing internal buffer for log stream %s; the stream has not been written to for %s", stream.logStreamName, logStreamInactivityTimeout.String())
+				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s; the stream has not been written to for %s", output.PluginInstanceID, stream.logStreamName, logStreamInactivityTimeout.String())
 				delete(output.streams, tag)
 			}
 		}
@@ -276,7 +279,7 @@ func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
 					logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 					nextSequenceToken: result.UploadSequenceToken,
 				}
-				logrus.Debugf("[cloudwatch] Initializing internal buffer for exising log stream %s\n", name)
+				logrus.Debugf("[cloudwatch %d] Initializing internal buffer for exising log stream %s\n", output.PluginInstanceID, name)
 				output.streams[name] = stream
 				stream.updateExpiration() // initialize
 				break
@@ -337,10 +340,10 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 		logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 		nextSequenceToken: nil, // sequence token not required for a new log stream
 	}
-	logrus.Debugf("[cloudwatch] Created new log stream %s\n", name)
+	logrus.Debugf("[cloudwatch %d] Created new log stream %s\n", output.PluginInstanceID, name)
 	output.streams[name] = stream
 	stream.updateExpiration() // initialize
-	logrus.Debugf("[cloudwatch] Created log stream %s", name)
+	logrus.Debugf("[cloudwatch %d] Created log stream %s", output.PluginInstanceID, name)
 
 	return stream, nil
 }
@@ -363,7 +366,7 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	var err error
 	record, err = plugins.DecodeMap(record)
 	if err != nil {
-		logrus.Debugf("[cloudwatch] Failed to decode record: %v\n", record)
+		logrus.Debugf("[cloudwatch %d] Failed to decode record: %v\n", output.PluginInstanceID, record)
 		return nil, err
 	}
 
@@ -382,7 +385,7 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	}
 
 	if err != nil {
-		logrus.Debugf("[cloudwatch] Failed to marshal record: %v\nLog Key: %s\n", record, output.logKey)
+		logrus.Debugf("[cloudwatch %d] Failed to marshal record: %v\nLog Key: %s\n", output.PluginInstanceID, record, output.logKey)
 		return nil, err
 	}
 
@@ -445,7 +448,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 				stream.nextSequenceToken = &parts[len(parts)-1]
 				stream.logEvents = stream.logEvents[:0]
 				stream.currentByteLength = 0
-				logrus.Infof("[cloudwatch] Encountered error %v; data already accepted, ignoring error\n", awsErr)
+				logrus.Infof("[cloudwatch %d] Encountered error %v; data already accepted, ignoring error\n", output.PluginInstanceID, awsErr)
 				return nil
 			} else if awsErr.Code() == cloudwatchlogs.ErrCodeInvalidSequenceTokenException {
 				// sequence code is bad, grab the correct one and retry
@@ -462,7 +465,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 		}
 	}
 	output.timer.Reset()
-	logrus.Debugf("Sent %d events to CloudWatch\n", len(stream.logEvents))
+	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch\n", output.PluginInstanceID, len(stream.logEvents))
 
 	stream.nextSequenceToken = response.NextSequenceToken
 	stream.logEvents = stream.logEvents[:0]
@@ -471,16 +474,16 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	return nil
 }
 
-func processRejectedEventsInfo(response *cloudwatchlogs.PutLogEventsOutput) {
+func (output *OutputPlugin) processRejectedEventsInfo(response *cloudwatchlogs.PutLogEventsOutput) {
 	if response.RejectedLogEventsInfo != nil {
 		if response.RejectedLogEventsInfo.ExpiredLogEventEndIndex != nil {
-			logrus.Warnf("[cloudwatch] %d log events were marked as expired by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.ExpiredLogEventEndIndex))
+			logrus.Warnf("[cloudwatch %d] %d log events were marked as expired by CloudWatch\n", output.PluginInstanceID, aws.Int64Value(response.RejectedLogEventsInfo.ExpiredLogEventEndIndex))
 		}
 		if response.RejectedLogEventsInfo.TooNewLogEventStartIndex != nil {
-			logrus.Warnf("[cloudwatch] %d log events were marked as too new by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.TooNewLogEventStartIndex))
+			logrus.Warnf("[cloudwatch %d] %d log events were marked as too new by CloudWatch\n", output.PluginInstanceID, aws.Int64Value(response.RejectedLogEventsInfo.TooNewLogEventStartIndex))
 		}
 		if response.RejectedLogEventsInfo.TooOldLogEventEndIndex != nil {
-			logrus.Warnf("[cloudwatch] %d log events were marked as too old by CloudWatch\n", aws.Int64Value(response.RejectedLogEventsInfo.TooOldLogEventEndIndex))
+			logrus.Warnf("[cloudwatch %d] %d log events were marked as too old by CloudWatch\n", output.PluginInstanceID, aws.Int64Value(response.RejectedLogEventsInfo.TooOldLogEventEndIndex))
 		}
 	}
 }

@@ -34,15 +34,29 @@ var (
 	pluginInstances []*cloudwatch.OutputPlugin
 )
 
-func addPluginInstance(ctx unsafe.Pointer, instance *cloudwatch.OutputPlugin) {
-	pluginIdx := len(pluginInstances)
-	output.FLBPluginSetContext(ctx, pluginIdx)
+func addPluginInstance(ctx unsafe.Pointer) error {
+	pluginID := len(pluginInstances)
+
+	config := getConfiguration(ctx, pluginID)
+	err := config.Validate()
+	if err != nil {
+		return err
+	}
+
+	instance, err := cloudwatch.NewOutputPlugin(config)
+	if err != nil {
+		return err
+	}
+
+	output.FLBPluginSetContext(ctx, pluginID)
 	pluginInstances = append(pluginInstances, instance)
+
+	return nil
 }
 
 func getPluginInstance(ctx unsafe.Pointer) *cloudwatch.OutputPlugin {
-	pluginIdx := output.FLBPluginGetContext(ctx).(int)
-	return pluginInstances[pluginIdx]
+	pluginID := output.FLBPluginGetContext(ctx).(int)
+	return pluginInstances[pluginID]
 }
 
 //export FLBPluginRegister
@@ -50,24 +64,25 @@ func FLBPluginRegister(ctx unsafe.Pointer) int {
 	return output.FLBPluginRegister(ctx, "cloudwatch", "AWS CloudWatch Fluent Bit Plugin!")
 }
 
-func getConfiguration(ctx unsafe.Pointer) cloudwatch.OutputPluginConfig {
+func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginConfig {
 	config := cloudwatch.OutputPluginConfig{}
+	config.PluginInstanceID = pluginID
 	config.LogGroupName = output.FLBPluginConfigKey(ctx, "log_group_name")
-	logrus.Infof("[cloudwatch] plugin parameter log_group = '%s'\n", config.LogGroupName)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_group = '%s'\n", pluginID, config.LogGroupName)
 	config.LogStreamPrefix = output.FLBPluginConfigKey(ctx, "log_stream_prefix")
-	logrus.Infof("[cloudwatch] plugin parameter log_stream_prefix = '%s'\n", config.LogStreamPrefix)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_prefix = '%s'\n", pluginID, config.LogStreamPrefix)
 	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")
-	logrus.Infof("[cloudwatch] plugin parameter log_stream = '%s'\n", config.LogStreamName)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_stream = '%s'\n", pluginID, config.LogStreamName)
 	config.Region = output.FLBPluginConfigKey(ctx, "region")
-	logrus.Infof("[cloudwatch] plugin parameter region = '%s'\n", config.Region)
+	logrus.Infof("[cloudwatch %d] plugin parameter region = '%s'\n", pluginID, config.Region)
 	config.LogKey = output.FLBPluginConfigKey(ctx, "log_key")
-	logrus.Infof("[cloudwatch] plugin parameter log_key = '%s'\n", config.LogKey)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_key = '%s'\n", pluginID, config.LogKey)
 	config.RoleARN = output.FLBPluginConfigKey(ctx, "role_arn")
-	logrus.Infof("[cloudwatch] plugin parameter role_arn = '%s'\n", config.RoleARN)
+	logrus.Infof("[cloudwatch %d] plugin parameter role_arn = '%s'\n", pluginID, config.RoleARN)
 	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
-	logrus.Infof("[cloudwatch] plugin parameter auto_create_group = '%v'\n", config.AutoCreateGroup)
+	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_group = '%v'\n", pluginID, config.AutoCreateGroup)
 	config.CWEndpoint = output.FLBPluginConfigKey(ctx, "endpoint")
-	logrus.Infof("[cloudwatch] plugin parameter endpoint = '%s'\n", config.CWEndpoint)
+	logrus.Infof("[cloudwatch %d] plugin parameter endpoint = '%s'\n", pluginID, config.CWEndpoint)
 
 	return config
 }
@@ -87,19 +102,11 @@ func getBoolParam(ctx unsafe.Pointer, param string, defaultVal bool) bool {
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	plugins.SetupLogger()
 
-	config := getConfiguration(ctx)
-	err := config.Validate()
+	err := addPluginInstance(ctx)
 	if err != nil {
 		logrus.Error(err)
 		return output.FLB_ERROR
 	}
-
-	cloudwatchLogs, err := cloudwatch.NewOutputPlugin(config)
-	if err != nil {
-		logrus.Error(err)
-		return output.FLB_ERROR
-	}
-	addPluginInstance(ctx, cloudwatchLogs)
 	return output.FLB_OK
 }
 
@@ -113,10 +120,10 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 	// Create Fluent Bit decoder
 	dec := output.NewDecoder(data, int(length))
 
-	fluentTag := C.GoString(tag)
-	logrus.Debugf("[cloudwatch] Found logs with tag: %s\n", fluentTag)
-
 	cloudwatchLogs := getPluginInstance(ctx)
+
+	fluentTag := C.GoString(tag)
+	logrus.Debugf("[cloudwatch %d] Found logs with tag: %s\n", cloudwatchLogs.PluginInstanceID, fluentTag)
 
 	for {
 		// Extract Record
@@ -150,7 +157,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		return output.FLB_RETRY
 	}
 
-	logrus.Debugf("[cloudwatch] Processed %d events with tag %s\n", count, fluentTag)
+	logrus.Debugf("[cloudwatch %d] Processed %d events with tag %s\n", cloudwatchLogs.PluginInstanceID, count, fluentTag)
 
 	// Return options:
 	//
