@@ -26,11 +26,24 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
-import "strings"
+import (
+	"strings"
+)
 
 var (
-	cloudwatchLogs *cloudwatch.OutputPlugin
+	pluginInstances []*cloudwatch.OutputPlugin
 )
+
+func addPluginInstance(ctx unsafe.Pointer, instance *cloudwatch.OutputPlugin) {
+	pluginIdx := len(pluginInstances)
+	output.FLBPluginSetContext(ctx, pluginIdx)
+	pluginInstances = append(pluginInstances, instance)
+}
+
+func getPluginInstance(ctx unsafe.Pointer) *cloudwatch.OutputPlugin {
+	pluginIdx := output.FLBPluginGetContext(ctx).(int)
+	return pluginInstances[pluginIdx]
+}
 
 //export FLBPluginRegister
 func FLBPluginRegister(ctx unsafe.Pointer) int {
@@ -81,16 +94,17 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 		return output.FLB_ERROR
 	}
 
-	cloudwatchLogs, err = cloudwatch.NewOutputPlugin(config)
+	cloudwatchLogs, err := cloudwatch.NewOutputPlugin(config)
 	if err != nil {
 		logrus.Error(err)
 		return output.FLB_ERROR
 	}
+	addPluginInstance(ctx, cloudwatchLogs)
 	return output.FLB_OK
 }
 
-//export FLBPluginFlush
-func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
+//export FLBPluginFlushCtx
+func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int {
 	var count int
 	var ret int
 	var ts interface{}
@@ -101,6 +115,8 @@ func FLBPluginFlush(data unsafe.Pointer, length C.int, tag *C.char) int {
 
 	fluentTag := C.GoString(tag)
 	logrus.Debugf("[cloudwatch] Found logs with tag: %s\n", fluentTag)
+
+	cloudwatchLogs := getPluginInstance(ctx)
 
 	for {
 		// Extract Record
