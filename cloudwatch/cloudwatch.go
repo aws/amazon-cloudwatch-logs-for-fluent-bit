@@ -183,7 +183,9 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 		svcConfig.Credentials = creds
 	}
 
-	return cloudwatchlogs.New(sess, svcConfig)
+	client := cloudwatchlogs.New(sess, svcConfig)
+	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
+	return client
 }
 
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
