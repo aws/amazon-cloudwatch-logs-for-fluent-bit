@@ -61,6 +61,44 @@ func TestAddEvent(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(testTag, record, time.Now())
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+}
+
+func TestAddEventCreateLogGroup(t *testing.T) {
+	timer, _ := plugins.NewTimeout(func(d time.Duration) {
+		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
+		logrus.Error("[firehose] Quitting Fluent Bit")
+		os.Exit(1)
+	})
+
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().CreateLogGroup(gomock.Any()).Return(&cloudwatchlogs.CreateLogGroupOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		backoff:         plugins.NewBackoff(),
+		timer:           timer,
+		streams:         make(map[string]*logStream),
+		logGroupCreated: false,
 	}
 
 	record := map[interface{}]interface{}{
@@ -120,6 +158,7 @@ func TestAddEventExistingStream(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -177,6 +216,7 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -218,6 +258,7 @@ func TestAddEventAndFlush(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -258,6 +299,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -305,6 +347,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 		backoff:         plugins.NewBackoff(),
 		timer:           timer,
 		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
 	}
 
 	record := map[interface{}]interface{}{
