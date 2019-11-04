@@ -101,8 +101,9 @@ We also provide images in Amazon ECR in each AWS Region for high availability.
 | ap-northeast-3 | 906394416424 | 906394416424.dkr.ecr.ap-northeast-3.amazonaws.com/aws-for-fluent-bit:latest |
 | eu-north-1     | 906394416424 | 906394416424.dkr.ecr.eu-north-1.amazonaws.com/aws-for-fluent-bit:latest     |
 | ap-east-1      | 449074385750 | 449074385750.dkr.ecr.ap-east-1.amazonaws.com/aws-for-fluent-bit:latest      |
-| cn-north-1     | 128054284489 | 128054284489.dkr.ecr.cn-north-1.amazonaws.com/aws-for-fluent-bit:latest     |
-| cn-northwest-1 | 128054284489 | 128054284489.dkr.ecr.cn-northwest-1.amazonaws.com/aws-for-fluent-bit:latest |
+| me-south-1     | 741863432321 | 741863432321.dkr.ecr.me-south-1.amazonaws.com/aws-for-fluent-bit:latest     |
+| cn-north-1     | 128054284489 | 128054284489.dkr.ecr.cn-north-1.amazonaws.com.cn/aws-for-fluent-bit:latest     |
+| cn-northwest-1 | 128054284489 | 128054284489.dkr.ecr.cn-northwest-1.amazonaws.com.cn/aws-for-fluent-bit:latest |
 | us-gov-east-1  | 161423150738 | 161423150738.dkr.ecr.us-gov-east-1.amazonaws.com/aws-for-fluent-bit:latest  |
 | us-gov-west-1  | 161423150738 | 161423150738.dkr.ecr.us-gov-west-1.amazonaws.com/aws-for-fluent-bit:latest  |
 
