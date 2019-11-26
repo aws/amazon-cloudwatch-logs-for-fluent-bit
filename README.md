@@ -71,7 +71,7 @@ This plugin has been tested with Fluent Bit 1.2.0+. It may not work with older F
 
 ### AWS for Fluent Bit
 
-We distribute a container image with Fluent Bit and these plugins. There are image tags for `latest` and the version of Fluent Bit that is built in the image. The first release is Fluent Bit `1.2.0`.
+We distribute a container image with Fluent Bit and these plugins. 
 
 ##### GitHub
 
