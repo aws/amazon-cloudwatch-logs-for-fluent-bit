@@ -59,6 +59,7 @@ type logStream struct {
 	logEvents         []*cloudwatchlogs.InputLogEvent
 	currentByteLength int
 	currentBatchStart *time.Time
+	currentBatchEnd   *time.Time
 	nextSequenceToken *string
 	logStreamName     string
 	expiration        time.Time
@@ -225,6 +226,9 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 	stream.currentByteLength += cloudwatchLen(event)
 	if stream.currentBatchStart == nil || stream.currentBatchStart.After(timestamp) {
 		stream.currentBatchStart = &timestamp
+	}
+	if stream.currentBatchEnd == nil || stream.currentBatchEnd.Before(timestamp) {
+		stream.currentBatchEnd = &timestamp
 	}
 
 	return fluentbit.FLB_OK
@@ -476,6 +480,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 				stream.logEvents = stream.logEvents[:0]
 				stream.currentByteLength = 0
 				stream.currentBatchStart = nil
+				stream.currentBatchEnd = nil
 				logrus.Infof("[cloudwatch %d] Encountered error %v; data already accepted, ignoring error\n", output.PluginInstanceID, awsErr)
 				return nil
 			} else if awsErr.Code() == cloudwatchlogs.ErrCodeInvalidSequenceTokenException {
@@ -500,6 +505,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	stream.logEvents = stream.logEvents[:0]
 	stream.currentByteLength = 0
 	stream.currentBatchStart = nil
+	stream.currentBatchEnd = nil
 
 	return nil
 }
@@ -536,14 +542,15 @@ func cloudwatchLen(event string) int {
 }
 
 func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
-	if stream.currentBatchStart == nil {
+	if stream.currentBatchStart == nil || stream.currentBatchEnd == nil {
 		return 0
 	}
 
-	delta := stream.currentBatchStart.Sub(timestamp)
-
-	if delta > 0 {
-		return delta
+	if stream.currentBatchStart.After(timestamp) {
+		return stream.currentBatchEnd.Sub(timestamp)
+	} else if stream.currentBatchEnd.Before(timestamp) {
+		return timestamp.Sub(*stream.currentBatchStart)
 	}
-	return -delta
+
+	return stream.currentBatchEnd.Sub(*stream.currentBatchStart)
 }

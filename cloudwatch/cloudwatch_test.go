@@ -320,26 +320,57 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 }
 
 func TestAddEventAndBatchSpanLimit(t *testing.T) {
-	output := setupLimitTestOutput(t)
+	output := setupLimitTestOutput(t, 2)
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	now := time.Now()
+	before := time.Now()
+	start := before.Add(time.Nanosecond)
+	end := start.Add(time.Hour*24 - time.Nanosecond)
+	after := start.Add(time.Hour * 24)
 
-	retCode := output.AddEvent(testTag, record, now)
+	retCode := output.AddEvent(testTag, record, start)
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, now.Add(time.Hour*24-time.Nanosecond))
+	retCode = output.AddEvent(testTag, record, end)
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, now.Add(time.Hour*24))
+	retCode = output.AddEvent(testTag, record, before)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+
+	retCode = output.AddEvent(testTag, record, after)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func TestAddEventAndBatchSpanLimitOnReverseOrder(t *testing.T) {
+	output := setupLimitTestOutput(t, 2)
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	before := time.Now()
+	start := before.Add(time.Nanosecond)
+	end := start.Add(time.Hour*24 - time.Nanosecond)
+	after := start.Add(time.Hour * 24)
+
+	retCode := output.AddEvent(testTag, record, end)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, start)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, before)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+
+	retCode = output.AddEvent(testTag, record, after)
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
 func TestAddEventAndEventsCountLimit(t *testing.T) {
-	output := setupLimitTestOutput(t)
+	output := setupLimitTestOutput(t, 1)
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
@@ -357,7 +388,7 @@ func TestAddEventAndEventsCountLimit(t *testing.T) {
 }
 
 func TestAddEventAndBatchSizeLimit(t *testing.T) {
-	output := setupLimitTestOutput(t)
+	output := setupLimitTestOutput(t, 1)
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte(strings.Repeat("some value", 100)),
@@ -375,7 +406,7 @@ func TestAddEventAndBatchSizeLimit(t *testing.T) {
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
-func setupLimitTestOutput(t *testing.T) OutputPlugin {
+func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -384,10 +415,7 @@ func setupLimitTestOutput(t *testing.T) OutputPlugin {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
 		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
-		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Return(nil, errors.New("should fail")),
-		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Return(&cloudwatchlogs.PutLogEventsOutput{
-			NextSequenceToken: aws.String("token"),
-		}, nil),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Times(times).Return(nil, errors.New("should fail")),
 	)
 
 	return OutputPlugin{
