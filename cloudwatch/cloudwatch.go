@@ -38,6 +38,7 @@ const (
 	perEventBytes          = 26
 	maximumBytesPerPut     = 1048576
 	maximumLogEventsPerPut = 10000
+	maximumTimeSpanPerPut  = time.Hour * 24
 )
 
 const (
@@ -58,6 +59,7 @@ type LogsClient interface {
 type logStream struct {
 	logEvents         []*cloudwatchlogs.InputLogEvent
 	currentByteLength int
+	currentBatchStart *time.Time
 	nextSequenceToken *string
 	logStreamName     string
 	expiration        time.Time
@@ -213,7 +215,10 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		return fluentbit.FLB_RETRY
 	}
 
-	if len(stream.logEvents) == maximumLogEventsPerPut || (stream.currentByteLength+cloudwatchLen(event)) >= maximumBytesPerPut {
+	countLimit := len(stream.logEvents) == maximumLogEventsPerPut
+	sizeLimit := (stream.currentByteLength + cloudwatchLen(event)) >= maximumBytesPerPut
+	spanLimit := stream.logBatchSpan(timestamp) >= maximumTimeSpanPerPut
+	if countLimit || sizeLimit || spanLimit {
 		err = output.putLogEvents(stream)
 		if err != nil {
 			logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
@@ -227,6 +232,10 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		Timestamp: aws.Int64(timestamp.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
 	})
 	stream.currentByteLength += cloudwatchLen(event)
+	if stream.currentBatchStart == nil || stream.currentBatchStart.After(timestamp) {
+		stream.currentBatchStart = &timestamp
+	}
+
 	return fluentbit.FLB_OK
 }
 
@@ -475,6 +484,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 				stream.nextSequenceToken = &parts[len(parts)-1]
 				stream.logEvents = stream.logEvents[:0]
 				stream.currentByteLength = 0
+				stream.currentBatchStart = nil
 				logrus.Infof("[cloudwatch %d] Encountered error %v; data already accepted, ignoring error\n", output.PluginInstanceID, awsErr)
 				return nil
 			} else if awsErr.Code() == cloudwatchlogs.ErrCodeInvalidSequenceTokenException {
@@ -498,6 +508,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	stream.nextSequenceToken = response.NextSequenceToken
 	stream.logEvents = stream.logEvents[:0]
 	stream.currentByteLength = 0
+	stream.currentBatchStart = nil
 
 	return nil
 }
@@ -531,4 +542,17 @@ func effectiveLen(line string) int {
 
 func cloudwatchLen(event string) int {
 	return effectiveLen(event) + perEventBytes
+}
+
+func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
+	if stream.currentBatchStart == nil {
+		return 0
+	}
+
+	delta := stream.currentBatchStart.Sub(timestamp)
+
+	if delta > 0 {
+		return delta
+	}
+	return -delta
 }
