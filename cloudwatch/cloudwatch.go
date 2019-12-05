@@ -23,6 +23,7 @@ import (
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials/endpointcreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -98,6 +99,7 @@ type OutputPluginConfig struct {
 	RoleARN          string
 	AutoCreateGroup  bool
 	CWEndpoint       string
+	CredsEndpoint    string
 	PluginInstanceID int
 }
 
@@ -126,7 +128,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		return nil, err
 	}
 
-	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint)
+	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint, config.CredsEndpoint)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
@@ -151,7 +153,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string) *cloudwatchlogs.CloudWatchLogs {
+func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string, credsEndpoint string) *cloudwatchlogs.CloudWatchLogs {
 	svcConfig := &aws.Config{}
 	if endpoint != "" {
 		defaultResolver := endpoints.DefaultResolver()
@@ -164,6 +166,14 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 			return defaultResolver.EndpointFor(service, region, optFns...)
 		}
 		svcConfig.EndpointResolver = endpoints.ResolverFunc(cwCustomResolverFn)
+	}
+	if credsEndpoint != "" {
+		logrus.Infof("Trying to get credentials from credentials_endpoint %s", credsEndpoint)
+		creds := endpointcreds.NewCredentialsClient(*sess.Config, sess.Handlers, credsEndpoint,
+			func(provider *endpointcreds.Provider) {
+				provider.ExpiryWindow = 5 * time.Minute
+			})
+		svcConfig.Credentials = creds
 	}
 	if roleARN != "" {
 		creds := stscreds.NewCredentials(sess, roleARN)
