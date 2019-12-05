@@ -14,6 +14,7 @@
 package cloudwatch
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -411,7 +412,7 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 			return nil, err
 		}
 
-		data, err = json.Marshal(log)
+		data, err = encodeLogKey(log)
 	} else {
 		data, err = json.Marshal(record)
 	}
@@ -445,6 +446,18 @@ func logKey(record map[interface{}]interface{}, logKey string) (*interface{}, er
 	}
 
 	return nil, fmt.Errorf("Failed to find key %s specified by log_key option in log record: %v", logKey, record)
+}
+
+func encodeLogKey(log *interface{}) ([]byte, error) {
+
+	switch t := (*log).(type) {
+	case []byte:
+		return t, nil
+	case string:
+		return []byte(t), nil
+	default:
+		return json.Marshal(log)
+	}
 }
 
 // Flush sends the current buffer of records (for the stream that corresponds with the given tag)
