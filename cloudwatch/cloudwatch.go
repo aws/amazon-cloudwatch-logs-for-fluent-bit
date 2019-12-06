@@ -14,6 +14,7 @@
 package cloudwatch
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -399,7 +400,7 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 			return nil, err
 		}
 
-		data, err = json.Marshal(log)
+		data, err = encodeLogKey(log)
 	} else {
 		data, err = json.Marshal(record)
 	}
@@ -410,6 +411,18 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	}
 
 	return data, nil
+}
+
+func encodeLogKey(log *interface{}) ([]byte, error) {
+
+	switch t := (*log).(type) {
+	case []byte:
+		return t, nil
+	case string:
+		return []byte(t), nil
+	default:
+		return json.Marshal(log)
+	}
 }
 
 // Implements the log_key option, which allows customers to only send the value of a given key to CW Logs
