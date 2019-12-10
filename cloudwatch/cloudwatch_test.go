@@ -14,8 +14,10 @@
 package cloudwatch
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,12 +42,6 @@ const (
 )
 
 func TestAddEvent(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -59,7 +55,7 @@ func TestAddEvent(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -74,12 +70,6 @@ func TestAddEvent(t *testing.T) {
 }
 
 func TestAddEventCreateLogGroup(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -96,7 +86,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: false,
 	}
@@ -112,12 +102,6 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 
 // Existing Log Stream that requires 2 API calls to find
 func TestAddEventExistingStream(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -156,7 +140,7 @@ func TestAddEventExistingStream(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -171,12 +155,6 @@ func TestAddEventExistingStream(t *testing.T) {
 }
 
 func TestAddEventExistingStreamNotFound(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -214,7 +192,7 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -229,12 +207,6 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 }
 
 func TestAddEventAndFlush(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -256,7 +228,7 @@ func TestAddEventAndFlush(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -268,16 +240,9 @@ func TestAddEventAndFlush(t *testing.T) {
 	retCode := output.AddEvent(testTag, record, time.Now())
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	output.Flush(testTag)
-
 }
 
 func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -297,7 +262,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -313,12 +278,6 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 }
 
 func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
-	timer, _ := plugins.NewTimeout(func(d time.Duration) {
-		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
-		logrus.Error("[firehose] Quitting Fluent Bit")
-		os.Exit(1)
-	})
-
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
@@ -345,7 +304,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		backoff:         plugins.NewBackoff(),
-		timer:           timer,
+		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logGroupCreated: true,
 	}
@@ -358,4 +317,123 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	output.Flush(testTag)
 
+}
+
+func TestAddEventAndBatchSpanLimit(t *testing.T) {
+	output := setupLimitTestOutput(t, 2)
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	before := time.Now()
+	start := before.Add(time.Nanosecond)
+	end := start.Add(time.Hour*24 - time.Nanosecond)
+	after := start.Add(time.Hour * 24)
+
+	retCode := output.AddEvent(testTag, record, start)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, end)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, before)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+
+	retCode = output.AddEvent(testTag, record, after)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func TestAddEventAndBatchSpanLimitOnReverseOrder(t *testing.T) {
+	output := setupLimitTestOutput(t, 2)
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	before := time.Now()
+	start := before.Add(time.Nanosecond)
+	end := start.Add(time.Hour*24 - time.Nanosecond)
+	after := start.Add(time.Hour * 24)
+
+	retCode := output.AddEvent(testTag, record, end)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, start)
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+	retCode = output.AddEvent(testTag, record, before)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+
+	retCode = output.AddEvent(testTag, record, after)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func TestAddEventAndEventsCountLimit(t *testing.T) {
+	output := setupLimitTestOutput(t, 1)
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	now := time.Now()
+
+	for i := 0; i < 10000; i++ {
+		retCode := output.AddEvent(testTag, record, now)
+		assert.Equal(t, retCode, fluentbit.FLB_OK, fmt.Sprintf("Expected return code to FLB_OK on %d iteration", i))
+	}
+
+	retCode := output.AddEvent(testTag, record, now)
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func TestAddEventAndBatchSizeLimit(t *testing.T) {
+	output := setupLimitTestOutput(t, 1)
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte(strings.Repeat("some value", 100)),
+	}
+
+	now := time.Now()
+
+	for i := 0; i < 104; i++ { // 104 * 10_000 < 1_048_576
+		retCode := output.AddEvent(testTag, record, now)
+		assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	}
+
+	// 105 * 10_000 > 1_048_576
+	retCode := output.AddEvent(testTag, record, now.Add(time.Hour*24+time.Nanosecond))
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).AnyTimes().Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Times(times).Return(nil, errors.New("should fail")),
+	)
+
+	return OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		backoff:         plugins.NewBackoff(),
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		logGroupCreated: true,
+	}
+}
+
+func setupTimeout() *plugins.Timeout {
+	timer, _ := plugins.NewTimeout(func(d time.Duration) {
+		logrus.Errorf("[firehose] timeout threshold reached: Failed to send logs for %v\n", d)
+		logrus.Error("[firehose] Quitting Fluent Bit")
+		os.Exit(1)
+	})
+	return timer
 }
