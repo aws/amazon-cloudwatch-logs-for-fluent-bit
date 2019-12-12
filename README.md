@@ -28,6 +28,15 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 * `role_arn`: ARN of an IAM role to assume (for cross account access).
 * `auto_create_group`: Automatically create the log group. Valid values are "true" or "false" (case insensitive). Defaults to false.
 * `endpoint`: Specify a custom endpoint for the CloudWatch Logs API.
+* `credentials_endpoint`: Specify a custom HTTP endpoint to pull credentials from. The HTTP response body should look like the following:
+```
+{
+    "AccessKeyId": "ACCESS_KEY_ID",
+    "Expiration": "EXPIRATION_DATE",
+    "SecretAccessKey": "SECRET_ACCESS_KEY",
+    "Token": "SECURITY_TOKEN_STRING"
+}
+```
 
 **Note**: The plugin will always create the log stream, if it does not exist.
 
@@ -71,7 +80,7 @@ This plugin has been tested with Fluent Bit 1.2.0+. It may not work with older F
 
 ### AWS for Fluent Bit
 
-We distribute a container image with Fluent Bit and these plugins. 
+We distribute a container image with Fluent Bit and these plugins.
 
 ##### GitHub
 
