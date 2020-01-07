@@ -210,6 +210,12 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 
 	event := logString(data)
 
+	if len(event) == 0 {
+		logrus.Warnf("[cloudwatch %d] Discarding an event from publishing as it is empty\n", output.PluginInstanceID)
+		// discard this single empty record and let the batch continue
+		return fluentbit.FLB_OK
+	}
+
 	stream, err := output.getLogStream(tag)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
