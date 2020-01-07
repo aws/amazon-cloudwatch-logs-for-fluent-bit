@@ -12,6 +12,6 @@ require (
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/stretchr/testify v1.3.0
-	github.com/ugorji/go/codec v1.1.7 // indirect
+	github.com/ugorji/go v1.1.7 // indirect
 	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9 // indirect
 )

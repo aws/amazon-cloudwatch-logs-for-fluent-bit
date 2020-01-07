@@ -206,6 +206,30 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 
 }
 
+func TestAddEventEmptyRecord(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		backoff:         plugins.NewBackoff(),
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		logKey:          "somekey",
+		logGroupCreated: true,
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte(""),
+	}
+
+	retCode := output.AddEvent(testTag, record, time.Now())
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+
+}
+
 func TestAddEventAndFlush(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
