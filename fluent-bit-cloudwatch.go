@@ -85,6 +85,8 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	logrus.Infof("[cloudwatch %d] plugin parameter endpoint = '%s'\n", pluginID, config.CWEndpoint)
 	config.CredsEndpoint = output.FLBPluginConfigKey(ctx, "credentials_endpoint")
 	logrus.Infof("[cloudwatch %d] plugin parameter credentials_endpoint = %s\n", pluginID, config.CredsEndpoint)
+	config.LogFormat = output.FLBPluginConfigKey(ctx, "log_format")
+	logrus.Infof("[cloudwatch %d] plugin parameter log_format = '%s'\n", pluginID, config.LogFormat)
 
 	return config
 }
