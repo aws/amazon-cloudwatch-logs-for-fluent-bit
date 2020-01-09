@@ -105,6 +105,7 @@ type OutputPluginConfig struct {
 	CWEndpoint       string
 	CredsEndpoint    string
 	PluginInstanceID int
+	LogFormat        string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -132,7 +133,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		return nil, err
 	}
 
-	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint, config.CredsEndpoint)
+	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint, config.CredsEndpoint, config.LogFormat)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
@@ -157,7 +158,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string, credsEndpoint string) *cloudwatchlogs.CloudWatchLogs {
+func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string, credsEndpoint string, logFormat string) *cloudwatchlogs.CloudWatchLogs {
 	svcConfig := &aws.Config{}
 	if endpoint != "" {
 		defaultResolver := endpoints.DefaultResolver()
@@ -185,6 +186,11 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 
 	client := cloudwatchlogs.New(sess, svcConfig)
 	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
+
+	if logFormat != "" {
+		client.Handlers.Build.PushBackNamed(LogFormatHandler(logFormat))
+	}
+
 	return client
 }
 
