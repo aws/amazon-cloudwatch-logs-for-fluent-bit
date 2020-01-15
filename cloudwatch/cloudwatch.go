@@ -81,6 +81,7 @@ func (stream *logStream) updateExpiration() {
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
 	logGroupName                  string
+	logGroupNameKey               string
 	logStreamPrefix               string
 	logStreamName                 string
 	logKey                        string
@@ -90,13 +91,14 @@ type OutputPlugin struct {
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
-	logGroupCreated               bool
+	autoCreateGroup               bool
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
 type OutputPluginConfig struct {
 	Region           string
 	LogGroupName     string
+	LogGroupNameKey  string
 	LogStreamPrefix  string
 	LogStreamName    string
 	LogKey           string
@@ -114,8 +116,8 @@ func (config OutputPluginConfig) Validate() error {
 	if config.Region == "" {
 		return fmt.Errorf(errorStr, "region")
 	}
-	if config.LogGroupName == "" {
-		return fmt.Errorf(errorStr, "log_group_name")
+	if config.LogGroupName == "" && config.LogGroupNameKey == "" {
+		return fmt.Errorf("log_group_name or log_group_name_key is required")
 	}
 	if config.LogStreamName == "" && config.LogStreamPrefix == "" {
 		return fmt.Errorf("log_stream_name or log_stream_prefix is required")
@@ -154,7 +156,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		streams:                       make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 		PluginInstanceID:              config.PluginInstanceID,
-		logGroupCreated:               !config.AutoCreateGroup,
+		autoCreateGroup:               config.AutoCreateGroup,
 	}, nil
 }
 
@@ -198,15 +200,6 @@ func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint str
 // the return value is one of: FLB_OK, FLB_RETRY
 // API Errors lead to an FLB_RETRY, and all other errors are logged, the record is discarded and FLB_OK is returned
 func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) int {
-	if !output.logGroupCreated {
-		err := output.createLogGroup()
-		if err != nil {
-			logrus.Error(err)
-			return fluentbit.FLB_ERROR
-		}
-		output.logGroupCreated = true
-	}
-
 	data, err := output.processRecord(record)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
@@ -221,7 +214,14 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		return fluentbit.FLB_OK
 	}
 
-	stream, err := output.getLogStream(tag)
+	groupName, err := output.getGroupName(record)
+	if err != nil {
+		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
+		// plugin is misconfigured
+		return fluentbit.FLB_ERROR
+	}
+
+	stream, err := output.getLogStream(tag, groupName)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// an error means that the log stream was not created; this is retryable
@@ -272,25 +272,36 @@ func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	}
 }
 
-func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) getLogStream(tag, groupName string) (*logStream, error) {
 	// find log stream by tag
 	name := output.getStreamName(tag)
 	stream, ok := output.streams[name]
-	if !ok {
-		// stream doesn't exist, create it
-		stream, err := output.createStream(tag)
+	if ok {
+		return stream, nil
+	}
+	// extra check, empty groupName indicates flush phase, but still land here meaning unable to find stream
+	if groupName == "" {
+		return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
+	}
+	if output.autoCreateGroup {
+		err := output.createLogGroup(groupName)
 		if err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
-					// existing stream
-					return output.existingLogStream(tag)
-				}
+			if awsErr, ok := err.(awserr.Error); !ok || awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+				return nil, err
 			}
 		}
-		return stream, err
 	}
-
-	return stream, nil
+	// stream doesn't exist, create it
+	stream, err := output.createStream(tag, groupName)
+	if err != nil {
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+				// existing stream
+				return output.existingLogStream(tag)
+			}
+		}
+	}
+	return stream, err
 }
 
 func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
@@ -344,6 +355,24 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 	return resp, err
 }
 
+func (output *OutputPlugin) getGroupName(record map[interface{}]interface{}) (string, error) {
+	if output.logGroupName != "" {
+		return output.logGroupName, nil
+	}
+	if output.logGroupNameKey != "" {
+		if _, ok := record[output.logGroupNameKey]; !ok {
+			return "", fmt.Errorf("Failed to find key %s specified by log_group_name_key option in log record: %v", output.logGroupNameKey, record)
+		}
+		name, ok := record[output.logGroupNameKey].(string)
+		if !ok {
+			return "", fmt.Errorf("Failed to parse key %s as a string in log record: %v", output.logGroupNameKey, record)
+		}
+		return name, nil
+
+	}
+	return "", fmt.Errorf("Failed to find valid group name settings")
+}
+
 func (output *OutputPlugin) getStreamName(tag string) string {
 	name := output.logStreamName
 	if output.logStreamPrefix != "" {
@@ -353,11 +382,11 @@ func (output *OutputPlugin) getStreamName(tag string) string {
 	return name
 }
 
-func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) createStream(tag, groupName string) (*logStream, error) {
 	output.timer.Check()
 	name := output.getStreamName(tag)
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
-		LogGroupName:  aws.String(output.logGroupName),
+		LogGroupName:  aws.String(groupName),
 		LogStreamName: aws.String(name),
 	})
 
@@ -380,9 +409,9 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func (output *OutputPlugin) createLogGroup() error {
+func (output *OutputPlugin) createLogGroup(groupName string) error {
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
-		LogGroupName: aws.String(output.logGroupName),
+		LogGroupName: aws.String(groupName),
 	})
 
 	if err != nil {
@@ -473,17 +502,9 @@ func encodeLogKey(log *interface{}) ([]byte, error) {
 
 // Flush sends the current buffer of records (for the stream that corresponds with the given tag)
 func (output *OutputPlugin) Flush(tag string) error {
-	if !output.logGroupCreated {
-		err := output.createLogGroup()
-		if err != nil {
-			return err
-		}
-		output.logGroupCreated = true
-	}
-
 	output.cleanUpExpiredLogStreams() // will periodically clean up, otherwise is no-op
 
-	stream, err := output.getLogStream(tag)
+	stream, err := output.getLogStream(tag, "")
 	if err != nil {
 		return err
 	}
