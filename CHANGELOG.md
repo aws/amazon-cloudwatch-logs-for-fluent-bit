@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.0
+* Feature - Add support for Embedded Metric Format (#27)
+
 ## 1.1.1
 * Bug - Discard and do not send empty messages (#40)
 
