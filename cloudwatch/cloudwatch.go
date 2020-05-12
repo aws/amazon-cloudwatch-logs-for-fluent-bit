@@ -86,7 +86,6 @@ type OutputPlugin struct {
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
-	backoff                       *plugins.Backoff
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
