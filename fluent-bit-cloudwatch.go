@@ -69,6 +69,8 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	config.PluginInstanceID = pluginID
 	config.LogGroupName = output.FLBPluginConfigKey(ctx, "log_group_name")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_group = '%s'\n", pluginID, config.LogGroupName)
+	config.LogGroupNameKey = output.FLBPluginConfigKey(ctx, "log_group_name_key")
+	logrus.Infof("[cloudwatch %d] plugin parameter log_group_name_key = '%s'\n", pluginID, config.LogGroupNameKey)
 	config.LogStreamPrefix = output.FLBPluginConfigKey(ctx, "log_stream_prefix")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_prefix = '%s'\n", pluginID, config.LogStreamPrefix)
 	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")

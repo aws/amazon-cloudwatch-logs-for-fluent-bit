@@ -147,6 +147,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 
 	return &OutputPlugin{
 		logGroupName:                  config.LogGroupName,
+		logGroupNameKey:               config.LogGroupNameKey,
 		logStreamPrefix:               config.LogStreamPrefix,
 		logStreamName:                 config.LogStreamName,
 		logKey:                        config.LogKey,
@@ -280,7 +281,7 @@ func (output *OutputPlugin) getLogStream(tag, groupName string) (*logStream, err
 	}
 	// extra check, empty groupName indicates flush phase, but still land here meaning unable to find stream
 	if groupName == "" {
-		return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
+		return nil, fmt.Errorf("groupName cannot be empty")
 	}
 	if output.autoCreateGroup {
 		err := output.createLogGroup(groupName)
@@ -355,9 +356,6 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 }
 
 func (output *OutputPlugin) getGroupName(record map[interface{}]interface{}) (string, error) {
-	if output.logGroupName != "" {
-		return output.logGroupName, nil
-	}
 	if output.logGroupNameKey != "" {
 		if _, ok := record[output.logGroupNameKey]; !ok {
 			return "", fmt.Errorf("Failed to find key %s specified by log_group_name_key option in log record: %v", output.logGroupNameKey, record)
@@ -366,8 +364,10 @@ func (output *OutputPlugin) getGroupName(record map[interface{}]interface{}) (st
 		if !ok {
 			return "", fmt.Errorf("Failed to parse key %s as a string in log record: %v", output.logGroupNameKey, record)
 		}
-		return name, nil
-
+		output.logGroupName = name
+	}
+	if output.logGroupName != "" {
+		return output.logGroupName, nil
 	}
 	return "", fmt.Errorf("Failed to find valid group name settings")
 }
@@ -453,7 +453,13 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 
 		data, err = encodeLogKey(log)
 	} else {
-		data, err = json.Marshal(record)
+		var cleanedRecord = make(map[interface{}]interface{})
+		for key, val := range record {
+			if key != "log_group_name" {
+				cleanedRecord[key] = val
+			}
+		}
+		data, err = json.Marshal(cleanedRecord)
 	}
 
 	if err != nil {
