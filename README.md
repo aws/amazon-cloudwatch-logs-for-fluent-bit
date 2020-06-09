@@ -22,6 +22,7 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 
 * `region`: The AWS region.
 * `log_group_name`: The name of the CloudWatch Log Group that you want log records sent to.
+* `log_group_name_key`: An optional key for a dynamic Log Group name.
 * `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to.
 * `log_stream_prefix`: Prefix for the Log Stream name. The tag is appended to the prefix to construct the full log stream name. Not compatible with the `log_stream_name` option.  
 * `log_key`: By default, the whole log record will be sent to CloudWatch. If you specify a key name with this option, then only the value of that key will be sent to CloudWatch. For example, if you are using the Fluentd Docker log driver, you can specify `log_key log` and only the log message will be sent to CloudWatch.
