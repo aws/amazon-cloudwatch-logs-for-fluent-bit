@@ -509,9 +509,10 @@ func encodeLogKey(log *interface{}) ([]byte, error) {
 func (output *OutputPlugin) Flush(tag string) error {
 	output.cleanUpExpiredLogStreams() // will periodically clean up, otherwise is no-op
 
-	stream, err := output.getLogStream(tag, "")
-	if err != nil {
-		return err
+	name := output.getStreamName(tag)
+	stream, ok := output.streams[name]
+	if !ok {
+		return fmt.Errorf("Failed to find stream with tag: %s", tag)
 	}
 	return output.putLogEvents(stream)
 }
