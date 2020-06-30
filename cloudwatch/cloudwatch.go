@@ -279,7 +279,7 @@ func (output *OutputPlugin) getLogStream(tag, groupName string) (*logStream, err
 	if ok {
 		return stream, nil
 	}
-	// extra check, empty groupName indicates flush phase, but still land here meaning unable to find stream
+
 	if groupName == "" {
 		return nil, fmt.Errorf("groupName cannot be empty")
 	}
