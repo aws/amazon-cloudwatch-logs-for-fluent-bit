@@ -83,6 +83,8 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_group = '%v'\n", pluginID, config.AutoCreateGroup)
 	config.CWEndpoint = output.FLBPluginConfigKey(ctx, "endpoint")
 	logrus.Infof("[cloudwatch %d] plugin parameter endpoint = '%s'\n", pluginID, config.CWEndpoint)
+	config.STSEndpoint = output.FLBPluginConfigKey(ctx, "sts_endpoint")
+	logrus.Infof("[cloudwatch %d] plugin parameter sts_endpoint = '%s'\n", pluginID, config.STSEndpoint)
 	config.CredsEndpoint = output.FLBPluginConfigKey(ctx, "credentials_endpoint")
 	logrus.Infof("[cloudwatch %d] plugin parameter credentials_endpoint = %s\n", pluginID, config.CredsEndpoint)
 	config.LogFormat = output.FLBPluginConfigKey(ctx, "log_format")

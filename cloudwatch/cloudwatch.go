@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/endpointcreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	fluentbit "github.com/fluent/fluent-bit-go/output"
@@ -102,6 +103,7 @@ type OutputPluginConfig struct {
 	RoleARN          string
 	AutoCreateGroup  bool
 	CWEndpoint       string
+	STSEndpoint      string
 	CredsEndpoint    string
 	PluginInstanceID int
 	LogFormat        string
@@ -125,14 +127,10 @@ func (config OutputPluginConfig) Validate() error {
 
 // NewOutputPlugin creates a OutputPlugin object
 func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(config.Region),
-	})
+	client, err := newCloudWatchLogsClient(config.Region, config.RoleARN, config.CWEndpoint, config.STSEndpoint, config.CredsEndpoint, config.LogFormat)
 	if err != nil {
 		return nil, err
 	}
-
-	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint, config.CredsEndpoint, config.LogFormat)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
@@ -157,40 +155,52 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string, credsEndpoint string, logFormat string) *cloudwatchlogs.CloudWatchLogs {
-	svcConfig := &aws.Config{}
-	if endpoint != "" {
-		defaultResolver := endpoints.DefaultResolver()
-		cwCustomResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
-			if service == "logs" {
-				return endpoints.ResolvedEndpoint{
-					URL: endpoint,
-				}, nil
-			}
-			return defaultResolver.EndpointFor(service, region, optFns...)
+func newCloudWatchLogsClient(region, roleARN, cwEndpoint, stsEndpoint, credsEndpoint, logFormat string) (*cloudwatchlogs.CloudWatchLogs, error) {
+	defaultResolver := endpoints.DefaultResolver()
+	customResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		if service == endpoints.LogsServiceID && cwEndpoint != "" {
+			return endpoints.ResolvedEndpoint{
+				URL: cwEndpoint,
+			}, nil
+		} else if service == endpoints.StsServiceID && stsEndpoint != "" {
+			return endpoints.ResolvedEndpoint{
+				URL: stsEndpoint,
+			}, nil
 		}
-		svcConfig.EndpointResolver = endpoints.ResolverFunc(cwCustomResolverFn)
+		return defaultResolver.EndpointFor(service, region, optFns...)
 	}
+
+	svcConfig := &aws.Config{
+		Region:                        aws.String(region),
+		EndpointResolver:              endpoints.ResolverFunc(customResolverFn),
+		CredentialsChainVerboseErrors: aws.Bool(true),
+	}
+
 	if credsEndpoint != "" {
-		creds := endpointcreds.NewCredentialsClient(*sess.Config, sess.Handlers, credsEndpoint,
+		creds := endpointcreds.NewCredentialsClient(*svcConfig, request.Handlers{}, credsEndpoint,
 			func(provider *endpointcreds.Provider) {
 				provider.ExpiryWindow = 5 * time.Minute
 			})
 		svcConfig.Credentials = creds
 	}
-	if roleARN != "" {
-		creds := stscreds.NewCredentials(sess, roleARN)
-		svcConfig.Credentials = creds
+
+	sess, err := session.NewSession(svcConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	client := cloudwatchlogs.New(sess, svcConfig)
-	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
+	stsConfig := &aws.Config{}
+	if roleARN != "" {
+		creds := stscreds.NewCredentials(sess, roleARN)
+		stsConfig.Credentials = creds
+	}
 
+	client := cloudwatchlogs.New(sess, stsConfig)
+	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
 	if logFormat != "" {
 		client.Handlers.Build.PushBackNamed(LogFormatHandler(logFormat))
 	}
-
-	return client
+	return client, nil
 }
 
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
