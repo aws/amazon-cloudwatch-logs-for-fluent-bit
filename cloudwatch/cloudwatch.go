@@ -127,7 +127,7 @@ func (config OutputPluginConfig) Validate() error {
 
 // NewOutputPlugin creates a OutputPlugin object
 func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
-	client, err := newCloudWatchLogsClient(config.Region, config.RoleARN, config.CWEndpoint, config.STSEndpoint, config.CredsEndpoint, config.LogFormat)
+	client, err := newCloudWatchLogsClient(config)
 	if err != nil {
 		return nil, err
 	}
@@ -155,28 +155,28 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(region, roleARN, cwEndpoint, stsEndpoint, credsEndpoint, logFormat string) (*cloudwatchlogs.CloudWatchLogs, error) {
+func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWatchLogs, error) {
 	customResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
-		if service == endpoints.LogsServiceID && cwEndpoint != "" {
+		if service == endpoints.LogsServiceID && config.CWEndpoint != "" {
 			return endpoints.ResolvedEndpoint{
-				URL: cwEndpoint,
+				URL: config.CWEndpoint,
 			}, nil
-		} else if service == endpoints.StsServiceID && stsEndpoint != "" {
+		} else if service == endpoints.StsServiceID && config.STSEndpoint != "" {
 			return endpoints.ResolvedEndpoint{
-				URL: stsEndpoint,
+				URL: config.STSEndpoint,
 			}, nil
 		}
 		return endpoints.DefaultResolver().EndpointFor(service, region, optFns...)
 	}
 
 	svcConfig := &aws.Config{
-		Region:                        aws.String(region),
+		Region:                        aws.String(config.Region),
 		EndpointResolver:              endpoints.ResolverFunc(customResolverFn),
 		CredentialsChainVerboseErrors: aws.Bool(true),
 	}
 
-	if credsEndpoint != "" {
-		creds := endpointcreds.NewCredentialsClient(*svcConfig, request.Handlers{}, credsEndpoint,
+	if config.CredsEndpoint != "" {
+		creds := endpointcreds.NewCredentialsClient(*svcConfig, request.Handlers{}, config.CredsEndpoint,
 			func(provider *endpointcreds.Provider) {
 				provider.ExpiryWindow = 5 * time.Minute
 			})
@@ -189,15 +189,15 @@ func newCloudWatchLogsClient(region, roleARN, cwEndpoint, stsEndpoint, credsEndp
 	}
 
 	stsConfig := &aws.Config{}
-	if roleARN != "" {
-		creds := stscreds.NewCredentials(sess, roleARN)
+	if config.RoleARN != "" {
+		creds := stscreds.NewCredentials(sess, config.RoleARN)
 		stsConfig.Credentials = creds
 	}
 
 	client := cloudwatchlogs.New(sess, stsConfig)
 	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
-	if logFormat != "" {
-		client.Handlers.Build.PushBackNamed(LogFormatHandler(logFormat))
+	if config.LogFormat != "" {
+		client.Handlers.Build.PushBackNamed(LogFormatHandler(config.LogFormat))
 	}
 	return client, nil
 }
