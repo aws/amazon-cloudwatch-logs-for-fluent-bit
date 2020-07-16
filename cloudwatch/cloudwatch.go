@@ -156,7 +156,6 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 }
 
 func newCloudWatchLogsClient(region, roleARN, cwEndpoint, stsEndpoint, credsEndpoint, logFormat string) (*cloudwatchlogs.CloudWatchLogs, error) {
-	defaultResolver := endpoints.DefaultResolver()
 	customResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
 		if service == endpoints.LogsServiceID && cwEndpoint != "" {
 			return endpoints.ResolvedEndpoint{
@@ -167,7 +166,7 @@ func newCloudWatchLogsClient(region, roleARN, cwEndpoint, stsEndpoint, credsEndp
 				URL: stsEndpoint,
 			}, nil
 		}
-		return defaultResolver.EndpointFor(service, region, optFns...)
+		return endpoints.DefaultResolver().EndpointFor(service, region, optFns...)
 	}
 
 	svcConfig := &aws.Config{
