@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.0
+* Feature - Add sts_endpoint param for custom STS API endpoint (#55)
+
 ## 1.2.0
 * Feature - Add support for Embedded Metric Format (#27)
 
