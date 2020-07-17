@@ -29,6 +29,7 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 * `role_arn`: ARN of an IAM role to assume (for cross account access).
 * `auto_create_group`: Automatically create the log group. Valid values are "true" or "false" (case insensitive). Defaults to false.
 * `endpoint`: Specify a custom endpoint for the CloudWatch Logs API.
+* `sts_endpoint`: Specify a custom endpoint for the STS API; used to assume your custom role provided with `role_arn`.
 * `credentials_endpoint`: Specify a custom HTTP endpoint to pull credentials from. The HTTP response body should look like the following:
 ```
 {
