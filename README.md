@@ -1,3 +1,5 @@
+[![Test Actions Status](https://github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/workflows/Build/badge.svg)](https://github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/actions)
+
 ## Fluent Bit Plugin for CloudWatch Logs
 
 A Fluent Bit output plugin for CloudWatch Logs
