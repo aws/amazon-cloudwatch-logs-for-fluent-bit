@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials/endpointcreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/endpoints"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	fluentbit "github.com/fluent/fluent-bit-go/output"
@@ -102,6 +103,7 @@ type OutputPluginConfig struct {
 	RoleARN          string
 	AutoCreateGroup  bool
 	CWEndpoint       string
+	STSEndpoint      string
 	CredsEndpoint    string
 	PluginInstanceID int
 	LogFormat        string
@@ -125,14 +127,10 @@ func (config OutputPluginConfig) Validate() error {
 
 // NewOutputPlugin creates a OutputPlugin object
 func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
-	sess, err := session.NewSession(&aws.Config{
-		Region: aws.String(config.Region),
-	})
+	client, err := newCloudWatchLogsClient(config)
 	if err != nil {
 		return nil, err
 	}
-
-	client := newCloudWatchLogsClient(config.RoleARN, sess, config.CWEndpoint, config.CredsEndpoint, config.LogFormat)
 
 	timer, err := plugins.NewTimeout(func(d time.Duration) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
@@ -157,40 +155,51 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}, nil
 }
 
-func newCloudWatchLogsClient(roleARN string, sess *session.Session, endpoint string, credsEndpoint string, logFormat string) *cloudwatchlogs.CloudWatchLogs {
-	svcConfig := &aws.Config{}
-	if endpoint != "" {
-		defaultResolver := endpoints.DefaultResolver()
-		cwCustomResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
-			if service == "logs" {
-				return endpoints.ResolvedEndpoint{
-					URL: endpoint,
-				}, nil
-			}
-			return defaultResolver.EndpointFor(service, region, optFns...)
+func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWatchLogs, error) {
+	customResolverFn := func(service, region string, optFns ...func(*endpoints.Options)) (endpoints.ResolvedEndpoint, error) {
+		if service == endpoints.LogsServiceID && config.CWEndpoint != "" {
+			return endpoints.ResolvedEndpoint{
+				URL: config.CWEndpoint,
+			}, nil
+		} else if service == endpoints.StsServiceID && config.STSEndpoint != "" {
+			return endpoints.ResolvedEndpoint{
+				URL: config.STSEndpoint,
+			}, nil
 		}
-		svcConfig.EndpointResolver = endpoints.ResolverFunc(cwCustomResolverFn)
+		return endpoints.DefaultResolver().EndpointFor(service, region, optFns...)
 	}
-	if credsEndpoint != "" {
-		creds := endpointcreds.NewCredentialsClient(*sess.Config, sess.Handlers, credsEndpoint,
+
+	svcConfig := &aws.Config{
+		Region:                        aws.String(config.Region),
+		EndpointResolver:              endpoints.ResolverFunc(customResolverFn),
+		CredentialsChainVerboseErrors: aws.Bool(true),
+	}
+
+	if config.CredsEndpoint != "" {
+		creds := endpointcreds.NewCredentialsClient(*svcConfig, request.Handlers{}, config.CredsEndpoint,
 			func(provider *endpointcreds.Provider) {
 				provider.ExpiryWindow = 5 * time.Minute
 			})
 		svcConfig.Credentials = creds
 	}
-	if roleARN != "" {
-		creds := stscreds.NewCredentials(sess, roleARN)
-		svcConfig.Credentials = creds
+
+	sess, err := session.NewSession(svcConfig)
+	if err != nil {
+		return nil, err
 	}
 
-	client := cloudwatchlogs.New(sess, svcConfig)
+	stsConfig := &aws.Config{}
+	if config.RoleARN != "" {
+		creds := stscreds.NewCredentials(sess, config.RoleARN)
+		stsConfig.Credentials = creds
+	}
+
+	client := cloudwatchlogs.New(sess, stsConfig)
 	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
-
-	if logFormat != "" {
-		client.Handlers.Build.PushBackNamed(LogFormatHandler(logFormat))
+	if config.LogFormat != "" {
+		client.Handlers.Build.PushBackNamed(LogFormatHandler(config.LogFormat))
 	}
-
-	return client
+	return client, nil
 }
 
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
