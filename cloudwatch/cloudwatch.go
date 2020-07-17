@@ -14,7 +14,6 @@
 package cloudwatch
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -426,12 +425,12 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	var data []byte
 
 	if output.logKey != "" {
-		log, err := logKey(record, output.logKey)
+		log, err := plugins.LogKey(record, output.logKey)
 		if err != nil {
 			return nil, err
 		}
 
-		data, err = encodeLogKey(log)
+		data, err = plugins.EncodeLogKey(log)
 	} else {
 		data, err = json.Marshal(record)
 	}
@@ -442,41 +441,6 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	}
 
 	return data, nil
-}
-
-// Implements the log_key option, which allows customers to only send the value of a given key to CW Logs
-func logKey(record map[interface{}]interface{}, logKey string) (*interface{}, error) {
-	for key, val := range record {
-		var currentKey string
-		switch t := key.(type) {
-		case []byte:
-			currentKey = string(t)
-		case string:
-			currentKey = t
-		default:
-			logrus.Debugf("[go plugin]: Unable to determine type of key %v\n", t)
-			continue
-		}
-
-		if logKey == currentKey {
-			return &val, nil
-		}
-
-	}
-
-	return nil, fmt.Errorf("Failed to find key %s specified by log_key option in log record: %v", logKey, record)
-}
-
-func encodeLogKey(log *interface{}) ([]byte, error) {
-
-	switch t := (*log).(type) {
-	case []byte:
-		return t, nil
-	case string:
-		return []byte(t), nil
-	default:
-		return json.Marshal(log)
-	}
 }
 
 // Flush sends the current buffer of records (for the stream that corresponds with the given tag)
