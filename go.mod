@@ -10,7 +10,7 @@ require (
 	github.com/golang/mock v1.3.1
 	github.com/json-iterator/go v1.1.10
 	github.com/sirupsen/logrus v1.6.0
-	github.com/stretchr/testify v1.5.1
+	github.com/stretchr/testify v1.6.1
 	github.com/ugorji/go v1.1.7 // indirect
 	golang.org/x/sys v0.0.0-20191128015809-6d18c012aee9 // indirect
 )
