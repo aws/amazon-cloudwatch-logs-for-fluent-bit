@@ -463,6 +463,11 @@ func (output *OutputPlugin) Flush(tag string) error {
 }
 
 func (output *OutputPlugin) putLogEvents(stream *logStream) error {
+	// return in case of empty logEvents
+	if len(stream.logEvents) == 0 {
+		return nil
+	}
+
 	output.timer.Check()
 	stream.updateExpiration()
 
