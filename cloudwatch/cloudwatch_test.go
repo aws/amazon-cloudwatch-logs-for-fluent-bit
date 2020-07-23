@@ -260,6 +260,25 @@ func TestAddEventAndFlush(t *testing.T) {
 	output.Flush(testTag)
 }
 
+func TestPutLogEvents(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		logKey:          "somekey",
+		logGroupCreated: true,
+	}
+
+	stream := &logStream{}
+	err := output.putLogEvents(stream)
+	assert.Nil(t, err)
+}
+
 func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
