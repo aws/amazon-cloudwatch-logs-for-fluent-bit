@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.3.1
+* Bug - Check for empty logEvents before calling PutLogEvents (#66)
+
 ## 1.3.0
 * Feature - Add sts_endpoint param for custom STS API endpoint (#55)
 
