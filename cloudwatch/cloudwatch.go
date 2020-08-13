@@ -205,6 +205,11 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 // the return value is one of: FLB_OK, FLB_RETRY
 // API Errors lead to an FLB_RETRY, and all other errors are logged, the record is discarded and FLB_OK is returned
 func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) int {
+	var (
+		err  error
+		data []byte
+	)
+
 	if !output.logGroupCreated {
 		err := output.createLogGroup()
 		if err != nil {
@@ -214,7 +219,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		output.logGroupCreated = true
 	}
 
-	data, err := output.processRecord(record)
+	data, record, err = output.processRecord(record)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// discard this single bad record and let the batch continue
@@ -228,7 +233,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		return fluentbit.FLB_OK
 	}
 
-	stream, err := output.getLogStream(tag)
+	stream, err := output.getLogStream(output.getStreamName(tag))
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// an error means that the log stream was not created; this is retryable
@@ -269,28 +274,26 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	if output.nextLogStreamCleanUpCheckTime.Before(time.Now()) {
 		logrus.Debugf("[cloudwatch %d] Checking for expired log streams", output.PluginInstanceID)
-		for tag, stream := range output.streams {
+		for name, stream := range output.streams {
 			if stream.isExpired() {
 				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s; the stream has not been written to for %s", output.PluginInstanceID, stream.logStreamName, logStreamInactivityTimeout.String())
-				delete(output.streams, tag)
+				delete(output.streams, name)
 			}
 		}
 		output.nextLogStreamCleanUpCheckTime = time.Now().Add(logStreamInactivityCheckInterval)
 	}
 }
 
-func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
-	// find log stream by tag
-	name := output.getStreamName(tag)
+func (output *OutputPlugin) getLogStream(name string) (*logStream, error) {
 	stream, ok := output.streams[name]
 	if !ok {
 		// stream doesn't exist, create it
-		stream, err := output.createStream(tag)
+		stream, err := output.createStream(name)
 		if err != nil {
 			if awsErr, ok := err.(awserr.Error); ok {
 				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
 					// existing stream
-					return output.existingLogStream(tag)
+					return output.existingLogStream(name)
 				}
 			}
 		}
@@ -300,10 +303,9 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) existingLogStream(name string) (*logStream, error) {
 	var nextToken *string
 	var stream *logStream
-	name := output.getStreamName(tag)
 
 	for stream == nil {
 		resp, err := output.describeLogStreams(name, nextToken)
@@ -351,6 +353,7 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 	return resp, err
 }
 
+// getStreamName attempts to return the correct stream name for the corresponding tag and record.
 func (output *OutputPlugin) getStreamName(tag string) string {
 	name := output.logStreamName
 	if output.logStreamPrefix != "" {
@@ -360,9 +363,8 @@ func (output *OutputPlugin) getStreamName(tag string) string {
 	return name
 }
 
-func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) createStream(name string) (*logStream, error) {
 	output.timer.Check()
-	name := output.getStreamName(tag)
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(output.logGroupName),
 		LogStreamName: aws.String(name),
@@ -413,12 +415,12 @@ func logString(record []byte) string {
 	return strings.TrimSpace(string(record))
 }
 
-func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, error) {
+func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, map[interface{}]interface{}, error) {
 	var err error
 	record, err = plugins.DecodeMap(record)
 	if err != nil {
 		logrus.Debugf("[cloudwatch %d] Failed to decode record: %v\n", output.PluginInstanceID, record)
-		return nil, err
+		return nil, nil, err
 	}
 
 	var json = jsoniter.ConfigCompatibleWithStandardLibrary
@@ -427,7 +429,7 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	if output.logKey != "" {
 		log, err := plugins.LogKey(record, output.logKey)
 		if err != nil {
-			return nil, err
+			return nil, record, err
 		}
 
 		data, err = plugins.EncodeLogKey(log)
@@ -437,14 +439,24 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 
 	if err != nil {
 		logrus.Debugf("[cloudwatch %d] Failed to marshal record: %v\nLog Key: %s\n", output.PluginInstanceID, record, output.logKey)
-		return nil, err
+		return nil, record, err
 	}
 
-	return data, nil
+	return data, record, nil
 }
 
-// Flush sends the current buffer of records (for the stream that corresponds with the given tag)
-func (output *OutputPlugin) Flush(tag string) error {
+// Flush sends the current buffer of records.
+func (output *OutputPlugin) Flush() error {
+	for name := range output.streams {
+		if err := output.flushStream(name); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (output *OutputPlugin) flushStream(name string) error {
 	if !output.logGroupCreated {
 		err := output.createLogGroup()
 		if err != nil {
@@ -455,7 +467,7 @@ func (output *OutputPlugin) Flush(tag string) error {
 
 	output.cleanUpExpiredLogStreams() // will periodically clean up, otherwise is no-op
 
-	stream, err := output.getLogStream(tag)
+	stream, err := output.getLogStream(name)
 	if err != nil {
 		return err
 	}

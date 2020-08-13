@@ -65,7 +65,6 @@ func TestAddEvent(t *testing.T) {
 
 	retCode := output.AddEvent(testTag, record, time.Now())
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
-
 }
 
 func TestAddEventCreateLogGroup(t *testing.T) {
@@ -257,7 +256,7 @@ func TestAddEventAndFlush(t *testing.T) {
 
 	retCode := output.AddEvent(testTag, record, time.Now())
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
-	output.Flush(testTag)
+	output.Flush()
 }
 
 func TestPutLogEvents(t *testing.T) {
@@ -309,8 +308,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 
 	retCode := output.AddEvent(testTag, record, time.Now())
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
-	output.Flush(testTag)
-
+	output.Flush()
 }
 
 func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
@@ -350,8 +348,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 
 	retCode := output.AddEvent(testTag, record, time.Now())
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
-	output.Flush(testTag)
-
+	output.Flush()
 }
 
 func TestAddEventAndBatchSpanLimit(t *testing.T) {
