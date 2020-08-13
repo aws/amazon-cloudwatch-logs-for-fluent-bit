@@ -592,5 +592,9 @@ func tagKeysToMap(tags string) map[string]*string {
 		output[key] = &value
 	}
 
+	if len(output) == 0 {
+		return nil
+	}
+
 	return output
 }
