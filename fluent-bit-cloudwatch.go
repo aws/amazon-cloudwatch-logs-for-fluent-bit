@@ -156,7 +156,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		}
 		count++
 	}
-	err := cloudwatchLogs.Flush(fluentTag)
+	err := cloudwatchLogs.Flush()
 	if err != nil {
 		fmt.Println(err)
 		// TODO: Better error handling
