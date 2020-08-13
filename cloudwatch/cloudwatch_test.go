@@ -74,6 +74,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 
 	gomock.InOrder(
 		mockCloudWatch.EXPECT().CreateLogGroup(gomock.Any()).Return(&cloudwatchlogs.CreateLogGroupOutput{}, nil),
+		mockCloudWatch.EXPECT().PutRetentionPolicy(gomock.Any()).Return(&cloudwatchlogs.PutRetentionPolicyOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
@@ -81,12 +82,13 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		logGroupCreated: false,
+		logGroupName:      testLogGroup,
+		logStreamPrefix:   testLogStreamPrefix,
+		client:            mockCloudWatch,
+		timer:             setupTimeout(),
+		streams:           make(map[string]*logStream),
+		logGroupCreated:   false,
+		logGroupRetention: 14,
 	}
 
 	record := map[interface{}]interface{}{

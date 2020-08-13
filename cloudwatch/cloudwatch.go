@@ -52,6 +52,7 @@ const (
 // LogsClient contains the CloudWatch API calls used by this plugin
 type LogsClient interface {
 	CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error)
+	PutRetentionPolicy(input *cloudwatchlogs.PutRetentionPolicyInput) (*cloudwatchlogs.PutRetentionPolicyOutput, error)
 	CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput) (*cloudwatchlogs.CreateLogStreamOutput, error)
 	DescribeLogStreams(input *cloudwatchlogs.DescribeLogStreamsInput) (*cloudwatchlogs.DescribeLogStreamsOutput, error)
 	PutLogEvents(input *cloudwatchlogs.PutLogEventsInput) (*cloudwatchlogs.PutLogEventsOutput, error)
@@ -90,6 +91,7 @@ type OutputPlugin struct {
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
 	logGroupCreated               bool
+	logGroupRetention             int64
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -101,6 +103,7 @@ type OutputPluginConfig struct {
 	LogKey           string
 	RoleARN          string
 	AutoCreateGroup  bool
+	LogRetentionDays int64
 	CWEndpoint       string
 	STSEndpoint      string
 	CredsEndpoint    string
@@ -151,6 +154,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 		PluginInstanceID:              config.PluginInstanceID,
 		logGroupCreated:               !config.AutoCreateGroup,
+		logGroupRetention:             config.LogRetentionDays,
 	}, nil
 }
 
@@ -403,6 +407,24 @@ func (output *OutputPlugin) createLogGroup() error {
 		}
 	}
 	logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
+
+	return output.setLogGroupRetention()
+}
+
+func (output *OutputPlugin) setLogGroupRetention() error {
+	if output.logGroupRetention < 1 {
+		return nil
+	}
+
+	_, err := output.client.PutRetentionPolicy(&cloudwatchlogs.PutRetentionPolicyInput{
+		LogGroupName:    aws.String(output.logGroupName),
+		RetentionInDays: aws.Int64(output.logGroupRetention),
+	})
+	if err != nil {
+		return err
+	}
+
+	logrus.Infof("[cloudwatch %d] Set retention policy on log group %s to %dd\n", output.PluginInstanceID, output.logGroupName, output.logGroupRetention)
 
 	return nil
 }
