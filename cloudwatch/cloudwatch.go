@@ -89,6 +89,7 @@ type OutputPlugin struct {
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
+	logGroupTags                  map[string]*string
 	logGroupCreated               bool
 }
 
@@ -100,6 +101,7 @@ type OutputPluginConfig struct {
 	LogStreamName    string
 	LogKey           string
 	RoleARN          string
+	NewLogGroupTags  string
 	AutoCreateGroup  bool
 	CWEndpoint       string
 	STSEndpoint      string
@@ -150,6 +152,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		streams:                       make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 		PluginInstanceID:              config.PluginInstanceID,
+		logGroupTags:                  tagKeysToMap(config.NewLogGroupTags),
 		logGroupCreated:               !config.AutoCreateGroup,
 	}, nil
 }
@@ -390,6 +393,7 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 func (output *OutputPlugin) createLogGroup() error {
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(output.logGroupName),
+		Tags:         output.logGroupTags,
 	})
 
 	if err != nil {
@@ -563,4 +567,30 @@ func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
 	}
 
 	return stream.currentBatchEnd.Sub(*stream.currentBatchStart)
+}
+
+// tagKeysToMap converts a raw string into a go map.
+// The input string should be match this: "key=value,key2=value2".
+// Spaces are trimmed, empty values are permitted, empty keys are ignored.
+// The final value in the input string wins in case of duplicate keys.
+func tagKeysToMap(tags string) map[string]*string {
+	output := make(map[string]*string)
+
+	for _, tag := range strings.Split(strings.TrimSpace(tags), ",") {
+		split := strings.SplitN(tag, "=", 2)
+		key := strings.TrimSpace(split[0])
+		value := ""
+
+		if key == "" {
+			continue
+		}
+
+		if len(split) > 1 {
+			value = strings.TrimSpace(split[1])
+		}
+
+		output[key] = &value
+	}
+
+	return output
 }
