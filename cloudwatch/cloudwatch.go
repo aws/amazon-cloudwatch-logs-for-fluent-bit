@@ -83,6 +83,7 @@ type OutputPlugin struct {
 	logGroupName                  string
 	logStreamPrefix               string
 	logStreamName                 string
+	logStreamKeyName              string
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -98,6 +99,7 @@ type OutputPluginConfig struct {
 	LogGroupName     string
 	LogStreamPrefix  string
 	LogStreamName    string
+	LogStreamKeyName string
 	LogKey           string
 	RoleARN          string
 	AutoCreateGroup  bool
@@ -144,6 +146,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupName:                  config.LogGroupName,
 		logStreamPrefix:               config.LogStreamPrefix,
 		logStreamName:                 config.LogStreamName,
+		logStreamKeyName:              config.LogStreamKeyName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -233,7 +236,7 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		return fluentbit.FLB_OK
 	}
 
-	stream, err := output.getLogStream(output.getStreamName(tag))
+	stream, err := output.getLogStream(output.getStreamName(tag, record))
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// an error means that the log stream was not created; this is retryable
@@ -354,13 +357,25 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 }
 
 // getStreamName attempts to return the correct stream name for the corresponding tag and record.
-func (output *OutputPlugin) getStreamName(tag string) string {
-	name := output.logStreamName
-	if output.logStreamPrefix != "" {
-		name = output.logStreamPrefix + tag
+func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]interface{}) (name string) {
+	// Create a dynamic log stream name based on the provided log key from the config.
+	if keyName := output.logStreamKeyName; keyName != "" {
+		for k, v := range record {
+			if recordKey, _ := k.(string); recordKey == keyName {
+				name, _ = v.(string)
+				break
+			}
+		}
 	}
 
-	return name
+	switch {
+	case output.logStreamPrefix != "":
+		return output.logStreamPrefix + tag + name
+	case name != "":
+		return name
+	default:
+		return output.logStreamName
+	}
 }
 
 func (output *OutputPlugin) createStream(name string) (*logStream, error) {
