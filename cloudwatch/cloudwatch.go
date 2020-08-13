@@ -395,20 +395,18 @@ func (output *OutputPlugin) createLogGroup() error {
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(output.logGroupName),
 	})
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
-				return err
-			}
-			logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, output.logGroupName)
-		} else {
-			return err
-		}
+	if err == nil {
+		logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
+		return output.setLogGroupRetention()
 	}
-	logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
 
-	return output.setLogGroupRetention()
+	if awsErr, ok := err.(awserr.Error); !ok ||
+		awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+		return err
+	}
+
+	logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, output.logGroupName)
+	return nil
 }
 
 func (output *OutputPlugin) setLogGroupRetention() error {
