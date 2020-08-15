@@ -369,8 +369,10 @@ func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]int
 	}
 
 	switch {
-	case output.logStreamPrefix != "":
+	case name != "" && output.logStreamPrefix != "":
 		return output.logStreamPrefix + tag + "." + name
+	case output.logStreamPrefix != "":
+		return output.logStreamPrefix + tag + name
 	case name != "":
 		return name
 	default:
