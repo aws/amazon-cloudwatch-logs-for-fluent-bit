@@ -17,7 +17,7 @@ import (
 	"C"
 	"fmt"
 	"unsafe"
-
+	"strconv"
 	"time"
 
 	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch"
@@ -81,6 +81,8 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	logrus.Infof("[cloudwatch %d] plugin parameter role_arn = '%s'", pluginID, config.RoleARN)
 	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
 	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_group = '%v'", pluginID, config.AutoCreateGroup)
+	config.LogRetentionDays, _ = strconv.ParseInt(output.FLBPluginConfigKey(ctx, "log_retention_days"), 10, 64)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_retention_days = '%d'", pluginID, config.LogRetentionDays)
 	config.CWEndpoint = output.FLBPluginConfigKey(ctx, "endpoint")
 	logrus.Infof("[cloudwatch %d] plugin parameter endpoint = '%s'", pluginID, config.CWEndpoint)
 	config.STSEndpoint = output.FLBPluginConfigKey(ctx, "sts_endpoint")
