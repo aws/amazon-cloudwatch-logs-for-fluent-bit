@@ -443,6 +443,18 @@ func TestAddEventAndBatchSizeLimit(t *testing.T) {
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
+func TestTagKeysToMap(t *testing.T) {
+	// Testable values. Purposely "messed up" - they should all parse out OK.
+	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7, k8, k9,key1=value1,space key = space value"
+	// The values above should return a map like this.
+	expect := map[string]string{"key1": "value1", "key2": "value2", "key3": "value3",
+		"key4": "", "key5": "v5", "key7": "=value7", "k8": "", "k9": "", "space key": "space value"}
+
+	for k, v := range tagKeysToMap(values) {
+		assert.Equal(t, *v, expect[k], "Tag key or value failed parser.")
+	}
+}
+
 func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
