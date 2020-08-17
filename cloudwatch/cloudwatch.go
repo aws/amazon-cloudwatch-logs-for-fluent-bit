@@ -52,6 +52,7 @@ const (
 // LogsClient contains the CloudWatch API calls used by this plugin
 type LogsClient interface {
 	CreateLogGroup(input *cloudwatchlogs.CreateLogGroupInput) (*cloudwatchlogs.CreateLogGroupOutput, error)
+	PutRetentionPolicy(input *cloudwatchlogs.PutRetentionPolicyInput) (*cloudwatchlogs.PutRetentionPolicyOutput, error)
 	CreateLogStream(input *cloudwatchlogs.CreateLogStreamInput) (*cloudwatchlogs.CreateLogStreamOutput, error)
 	DescribeLogStreams(input *cloudwatchlogs.DescribeLogStreamsInput) (*cloudwatchlogs.DescribeLogStreamsOutput, error)
 	PutLogEvents(input *cloudwatchlogs.PutLogEventsInput) (*cloudwatchlogs.PutLogEventsOutput, error)
@@ -90,7 +91,9 @@ type OutputPlugin struct {
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
+	logGroupTags                  map[string]*string
 	logGroupCreated               bool
+	logGroupRetention             int64
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -102,7 +105,9 @@ type OutputPluginConfig struct {
 	LogStreamKeyName string
 	LogKey           string
 	RoleARN          string
+	NewLogGroupTags  string
 	AutoCreateGroup  bool
+	LogRetentionDays int64
 	CWEndpoint       string
 	STSEndpoint      string
 	CredsEndpoint    string
@@ -153,7 +158,9 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		streams:                       make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 		PluginInstanceID:              config.PluginInstanceID,
+		logGroupTags:                  tagKeysToMap(config.NewLogGroupTags),
 		logGroupCreated:               !config.AutoCreateGroup,
+		logGroupRetention:             config.LogRetentionDays,
 	}, nil
 }
 
@@ -409,19 +416,36 @@ func (output *OutputPlugin) createStream(name string) (*logStream, error) {
 func (output *OutputPlugin) createLogGroup() error {
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(output.logGroupName),
+		Tags:         output.logGroupTags,
 	})
-
-	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			if awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
-				return err
-			}
-			logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, output.logGroupName)
-		} else {
-			return err
-		}
+	if err == nil {
+		logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
+		return output.setLogGroupRetention()
 	}
-	logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
+
+	if awsErr, ok := err.(awserr.Error); !ok ||
+		awsErr.Code() != cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
+		return err
+	}
+
+	logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, output.logGroupName)
+	return nil
+}
+
+func (output *OutputPlugin) setLogGroupRetention() error {
+	if output.logGroupRetention < 1 {
+		return nil
+	}
+
+	_, err := output.client.PutRetentionPolicy(&cloudwatchlogs.PutRetentionPolicyInput{
+		LogGroupName:    aws.String(output.logGroupName),
+		RetentionInDays: aws.Int64(output.logGroupRetention),
+	})
+	if err != nil {
+		return err
+	}
+
+	logrus.Infof("[cloudwatch %d] Set retention policy on log group %s to %dd\n", output.PluginInstanceID, output.logGroupName, output.logGroupRetention)
 
 	return nil
 }
@@ -592,4 +616,34 @@ func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
 	}
 
 	return stream.currentBatchEnd.Sub(*stream.currentBatchStart)
+}
+
+// tagKeysToMap converts a raw string into a go map.
+// The input string should be match this: "key=value,key2=value2".
+// Spaces are trimmed, empty values are permitted, empty keys are ignored.
+// The final value in the input string wins in case of duplicate keys.
+func tagKeysToMap(tags string) map[string]*string {
+	output := make(map[string]*string)
+
+	for _, tag := range strings.Split(strings.TrimSpace(tags), ",") {
+		split := strings.SplitN(tag, "=", 2)
+		key := strings.TrimSpace(split[0])
+		value := ""
+
+		if key == "" {
+			continue
+		}
+
+		if len(split) > 1 {
+			value = strings.TrimSpace(split[1])
+		}
+
+		output[key] = &value
+	}
+
+	if len(output) == 0 {
+		return nil
+	}
+
+	return output
 }

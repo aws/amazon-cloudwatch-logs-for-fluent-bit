@@ -73,6 +73,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 
 	gomock.InOrder(
 		mockCloudWatch.EXPECT().CreateLogGroup(gomock.Any()).Return(&cloudwatchlogs.CreateLogGroupOutput{}, nil),
+		mockCloudWatch.EXPECT().PutRetentionPolicy(gomock.Any()).Return(&cloudwatchlogs.PutRetentionPolicyOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
@@ -80,12 +81,13 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		logGroupCreated: false,
+		logGroupName:      testLogGroup,
+		logStreamPrefix:   testLogStreamPrefix,
+		client:            mockCloudWatch,
+		timer:             setupTimeout(),
+		streams:           make(map[string]*logStream),
+		logGroupCreated:   false,
+		logGroupRetention: 14,
 	}
 
 	record := map[interface{}]interface{}{
@@ -436,6 +438,18 @@ func TestAddEventAndBatchSizeLimit(t *testing.T) {
 	// 105 * 10_000 > 1_048_576
 	retCode := output.AddEvent(testTag, record, now.Add(time.Hour*24+time.Nanosecond))
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
+func TestTagKeysToMap(t *testing.T) {
+	// Testable values. Purposely "messed up" - they should all parse out OK.
+	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7, k8, k9,key1=value1,space key = space value"
+	// The values above should return a map like this.
+	expect := map[string]string{"key1": "value1", "key2": "value2", "key3": "value3",
+		"key4": "", "key5": "v5", "key7": "=value7", "k8": "", "k9": "", "space key": "space value"}
+
+	for k, v := range tagKeysToMap(values) {
+		assert.Equal(t, *v, expect[k], "Tag key or value failed parser.")
+	}
 }
 
 func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
