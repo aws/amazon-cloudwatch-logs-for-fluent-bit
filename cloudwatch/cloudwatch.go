@@ -359,9 +359,9 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 // getStreamName attempts to return the correct stream name for the corresponding tag and record.
 func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]interface{}) (name string) {
 	// Create a dynamic log stream name based on the provided log key from the config.
-	if keyName := output.logStreamKeyName; keyName != "" {
+	if output.logStreamKeyName != "" {
 		for k, v := range record {
-			if recordKey, _ := k.(string); recordKey == keyName {
+			if recordKey, _ := k.(string); recordKey == output.logStreamKeyName {
 				name, _ = v.(string)
 				break
 			}
