@@ -375,8 +375,8 @@ func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]int
 
 	defer func() {
 		delete(record, "TAG")
+		delete(record, "TAG0")
 		delete(record, "TAG1")
-		delete(record, "TAG2")
 	}()
 
 	name, err := parseDataMapTags(record, output.logStreamName)
