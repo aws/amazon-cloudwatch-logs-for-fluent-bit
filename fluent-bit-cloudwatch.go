@@ -16,9 +16,9 @@ package main
 import (
 	"C"
 	"fmt"
-	"unsafe"
 	"strconv"
 	"time"
+	"unsafe"
 
 	"github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/cloudwatch"
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
@@ -154,7 +154,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 			timestamp = time.Now()
 		}
 
-		retCode := cloudwatchLogs.AddEvent(fluentTag, record, timestamp)
+		retCode := cloudwatchLogs.AddEvent(&cloudwatch.Event{Tag: fluentTag, Record: record, Ts: timestamp})
 		if retCode != output.FLB_OK {
 			return retCode
 		}

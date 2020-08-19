@@ -56,14 +56,14 @@ func TestAddEvent(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 }
 
@@ -86,7 +86,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		client:            mockCloudWatch,
 		timer:             setupTimeout(),
 		streams:           make(map[string]*logStream),
-		logGroupCreated:   false,
+		groups:            make(map[string]struct{}),
 		logGroupRetention: 14,
 	}
 
@@ -94,7 +94,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
 }
@@ -140,14 +140,14 @@ func TestAddEventExistingStream(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
 }
@@ -191,14 +191,14 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 
 }
@@ -214,14 +214,14 @@ func TestAddEventEmptyRecord(t *testing.T) {
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logKey:          "somekey",
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte(""),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
 }
@@ -249,14 +249,14 @@ func TestAddEventAndFlush(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	output.Flush()
 }
@@ -272,7 +272,7 @@ func TestPutLogEvents(t *testing.T) {
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logKey:          "somekey",
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	stream := &logStream{}
@@ -280,7 +280,7 @@ func TestPutLogEvents(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-func TestGetStreamName(t *testing.T) {
+func TestSetGroupStreamNames(t *testing.T) {
 	record := map[interface{}]interface{}{
 		"ident": "cron",
 		"msg":   "my cool log message",
@@ -290,25 +290,32 @@ func TestGetStreamName(t *testing.T) {
 		},
 	}
 
+	e := &Event{Tag: "syslog.0", Record: record}
+
 	// Test against non-template name.
 	output := OutputPlugin{logStreamName: "/aws/ecs/test-stream-name"}
-	assert.Equal(t, output.logStreamName, output.getStreamName("syslog.0", record),
+	output.setGroupStreamNames(e)
+	assert.Equal(t, output.logStreamName, e.stream,
 		"The provided stream name must be returned exactly, without modifications.")
 	// Test against a simple log stream prefix.
 	output = OutputPlugin{logStreamPrefix: "/aws/ecs/test-stream-prefix/"}
-	assert.Equal(t, output.logStreamPrefix+"syslog.0", output.getStreamName("syslog.0", record),
+	output.setGroupStreamNames(e)
+	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
 	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0}/${TAG1}/${details['region']}/${details['az']}/${ident}"}
-	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", output.getStreamName("syslog.0", record),
+	output.setGroupStreamNames(e)
+	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
 	// Test bad template } missing. Just prints an error and returns the input value.
 	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0"}
-	assert.Equal(t, "/aws/ecs/${TAG0", output.getStreamName("syslog.0", record),
+	output.setGroupStreamNames(e)
+	assert.Equal(t, "/aws/ecs/${TAG0", e.stream,
 		"The provided stream name must match when parsing fails.")
 	// Test another bad template ] missing.
 	output = OutputPlugin{logStreamName: "/aws/ecs/${details['region'}"}
-	assert.Equal(t, "/aws/ecs/${details['region'}", output.getStreamName("syslog.0", record),
+	output.setGroupStreamNames(e)
+	assert.Equal(t, "/aws/ecs/${details['region'}", e.stream,
 		"The provided stream name must match when parsing fails.")
 }
 
@@ -333,14 +340,14 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	output.Flush()
 }
@@ -373,14 +380,14 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 
 	record := map[interface{}]interface{}{
 		"somekey": []byte("some value"),
 	}
 
-	retCode := output.AddEvent(testTag, record, time.Now())
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	output.Flush()
 }
@@ -397,16 +404,16 @@ func TestAddEventAndBatchSpanLimit(t *testing.T) {
 	end := start.Add(time.Hour*24 - time.Nanosecond)
 	after := start.Add(time.Hour * 24)
 
-	retCode := output.AddEvent(testTag, record, start)
+	retCode := output.AddEvent(&Event{TS: start, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, end)
+	retCode = output.AddEvent(&Event{TS: end, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, before)
+	retCode = output.AddEvent(&Event{TS: before, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 
-	retCode = output.AddEvent(testTag, record, after)
+	retCode = output.AddEvent(&Event{TS: after, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
@@ -422,16 +429,16 @@ func TestAddEventAndBatchSpanLimitOnReverseOrder(t *testing.T) {
 	end := start.Add(time.Hour*24 - time.Nanosecond)
 	after := start.Add(time.Hour * 24)
 
-	retCode := output.AddEvent(testTag, record, end)
+	retCode := output.AddEvent(&Event{TS: end, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, start)
+	retCode = output.AddEvent(&Event{TS: start, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 
-	retCode = output.AddEvent(testTag, record, before)
+	retCode = output.AddEvent(&Event{TS: before, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 
-	retCode = output.AddEvent(testTag, record, after)
+	retCode = output.AddEvent(&Event{TS: after, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
@@ -445,11 +452,10 @@ func TestAddEventAndEventsCountLimit(t *testing.T) {
 	now := time.Now()
 
 	for i := 0; i < 10000; i++ {
-		retCode := output.AddEvent(testTag, record, now)
+		retCode := output.AddEvent(&Event{TS: now, Tag: testTag, Record: record})
 		assert.Equal(t, retCode, fluentbit.FLB_OK, fmt.Sprintf("Expected return code to FLB_OK on %d iteration", i))
 	}
-
-	retCode := output.AddEvent(testTag, record, now)
+	retCode := output.AddEvent(&Event{TS: now, Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
@@ -463,12 +469,12 @@ func TestAddEventAndBatchSizeLimit(t *testing.T) {
 	now := time.Now()
 
 	for i := 0; i < 104; i++ { // 104 * 10_000 < 1_048_576
-		retCode := output.AddEvent(testTag, record, now)
+		retCode := output.AddEvent(&Event{TS: now, Tag: testTag, Record: record})
 		assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 	}
 
 	// 105 * 10_000 > 1_048_576
-	retCode := output.AddEvent(testTag, record, now.Add(time.Hour*24+time.Nanosecond))
+	retCode := output.AddEvent(&Event{TS: now.Add(time.Hour*24 + time.Nanosecond), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
 }
 
@@ -490,7 +496,7 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
-		logGroupCreated: true,
+		groups:          map[string]struct{}{testLogGroup: {}},
 	}
 }
 
