@@ -84,7 +84,6 @@ type OutputPlugin struct {
 	logGroupName                  string
 	logStreamPrefix               string
 	logStreamName                 string
-	logStreamKeyName              string
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -102,7 +101,6 @@ type OutputPluginConfig struct {
 	LogGroupName     string
 	LogStreamPrefix  string
 	LogStreamName    string
-	LogStreamKeyName string
 	LogKey           string
 	RoleARN          string
 	NewLogGroupTags  string
@@ -151,7 +149,6 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupName:                  config.LogGroupName,
 		logStreamPrefix:               config.LogStreamPrefix,
 		logStreamName:                 config.LogStreamName,
-		logStreamKeyName:              config.LogStreamKeyName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -365,26 +362,33 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 
 // getStreamName attempts to return the correct stream name for the corresponding tag and record.
 func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]interface{}) (name string) {
+	var err error
+
 	// Create a dynamic log stream name based on the provided log key from the config.
-	if output.logStreamKeyName != "" {
-		for k, v := range record {
-			if recordKey, _ := k.(string); recordKey == output.logStreamKeyName {
-				name, _ = v.(string)
-				break
-			}
-		}
+	if output.logStreamPrefix != "" {
+		return output.logStreamPrefix + tag
 	}
 
-	switch {
-	case name != "" && output.logStreamPrefix != "":
-		return output.logStreamPrefix + tag + "." + name
-	case output.logStreamPrefix != "":
-		return output.logStreamPrefix + tag
-	case name != "":
-		return name
-	default:
-		return output.logStreamName
+	// Add the tag to the record so it can be parsed out in the template.
+	split := strings.SplitN(tag, ".", 2)
+	record["TAG"] = tag
+	record["TAG0"] = split[0]
+	record["TAG1"] = split[1]
+
+	if name, err = digTags(record, output.logStreamName); err != nil {
+		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
+		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
 	}
+
+	delete(record, "TAG")
+	delete(record, "TAG1")
+	delete(record, "TAG2")
+
+	if name == "" {
+		name = output.logStreamName
+	}
+
+	return name
 }
 
 func (output *OutputPlugin) createStream(name string) (*logStream, error) {
@@ -616,34 +620,4 @@ func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
 	}
 
 	return stream.currentBatchEnd.Sub(*stream.currentBatchStart)
-}
-
-// tagKeysToMap converts a raw string into a go map.
-// The input string should be match this: "key=value,key2=value2".
-// Spaces are trimmed, empty values are permitted, empty keys are ignored.
-// The final value in the input string wins in case of duplicate keys.
-func tagKeysToMap(tags string) map[string]*string {
-	output := make(map[string]*string)
-
-	for _, tag := range strings.Split(strings.TrimSpace(tags), ",") {
-		split := strings.SplitN(tag, "=", 2)
-		key := strings.TrimSpace(split[0])
-		value := ""
-
-		if key == "" {
-			continue
-		}
-
-		if len(split) > 1 {
-			value = strings.TrimSpace(split[1])
-		}
-
-		output[key] = &value
-	}
-
-	if len(output) == 0 {
-		return nil
-	}
-
-	return output
 }

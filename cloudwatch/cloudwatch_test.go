@@ -280,6 +280,34 @@ func TestPutLogEvents(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestGetStreamName(t *testing.T) {
+	record := map[interface{}]interface{}{
+		"ident": "cron",
+		"msg":   "my cool log message",
+		"details": map[interface{}]interface{}{
+			"region": "us-west-2",
+			"az":     "a",
+		},
+	}
+
+	// Test against non-template name.
+	output := OutputPlugin{logStreamName: "/aws/ecs/test-stream-name"}
+	assert.Equal(t, output.logStreamName, output.getStreamName("syslog.0", record),
+		"The provided stream name must be returned exactly, without modifications.")
+	// Test against a simple log stream prefix.
+	output = OutputPlugin{logStreamPrefix: "/aws/ecs/test-stream-prefix/"}
+	assert.Equal(t, output.logStreamPrefix+"syslog.0", output.getStreamName("syslog.0", record),
+		"The provided stream prefix must be prefixed to the provided tag name.")
+	// Test replacing items from template variables.
+	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0}/${TAG1}/${details['region']}/${details['az']}/${ident}"}
+	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", output.getStreamName("syslog.0", record),
+		"The stream name template was not correctly parsed.")
+	// Test bad template. Just prints an error and returns the provided value.
+	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0"}
+	assert.Equal(t, "/aws/ecs/${TAG0", output.getStreamName("syslog.0", record),
+		"The provided stream name must match when parsing fails.")
+}
+
 func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
@@ -438,18 +466,6 @@ func TestAddEventAndBatchSizeLimit(t *testing.T) {
 	// 105 * 10_000 > 1_048_576
 	retCode := output.AddEvent(testTag, record, now.Add(time.Hour*24+time.Nanosecond))
 	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
-}
-
-func TestTagKeysToMap(t *testing.T) {
-	// Testable values. Purposely "messed up" - they should all parse out OK.
-	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7, k8, k9,key1=value1,space key = space value"
-	// The values above should return a map like this.
-	expect := map[string]string{"key1": "value1", "key2": "value2", "key3": "value3",
-		"key4": "", "key5": "v5", "key7": "=value7", "k8": "", "k9": "", "space key": "space value"}
-
-	for k, v := range tagKeysToMap(values) {
-		assert.Equal(t, *v, expect[k], "Tag key or value failed parser.")
-	}
 }
 
 func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {

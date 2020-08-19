@@ -24,9 +24,10 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 
 * `region`: The AWS region.
 * `log_group_name`: The name of the CloudWatch Log Group that you want log records sent to.
-* `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to.
-* `log_stream_prefix`: Prefix for the Log Stream name. The tag is appended to the prefix to construct the full log stream name. Not compatible with the `log_stream_name` option.  
-* `log_stream_key_name`: If provided, this key name is extracted from the log record and placed into the log stream name. The value must be a string, and will be suffixed to `log_stream_prefix` and the `tag`. If the key is not found in the log then `log_stream_prefix` or `log_stream_name` (whichever is provided) will be used instead.
+* `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to. This value allows a template in the form of `${variable}` where
+`variable` is a map key name in the log message. To access sub-values in the map
+use the form `${variable['subkey']}`. Special values: `${TAG}` references the full tag name, `${TAG0}` and `${TAG1}` are the values to the left and right of the first period in the tag.
+* `log_stream_prefix`: Prefix for the Log Stream name. The tag is appended to the prefix to construct the full log stream name. Not compatible with the `log_stream_name` option.
 * `log_key`: By default, the whole log record will be sent to CloudWatch. If you specify a key name with this option, then only the value of that key will be sent to CloudWatch. For example, if you are using the Fluentd Docker log driver, you can specify `log_key log` and only the log message will be sent to CloudWatch.
 * `log_format`: An optional parameter that can be used to tell CloudWatch the format of the data. A value of `json/emf` enables CloudWatch to extract custom metrics embedded in a JSON payload. See the [Embedded Metric Format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html).
 * `role_arn`: ARN of an IAM role to assume (for cross account access).
