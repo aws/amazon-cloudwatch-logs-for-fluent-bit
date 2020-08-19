@@ -154,7 +154,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 			timestamp = time.Now()
 		}
 
-		retCode := cloudwatchLogs.AddEvent(&cloudwatch.Event{Tag: fluentTag, Record: record, Ts: timestamp})
+		retCode := cloudwatchLogs.AddEvent(&cloudwatch.Event{Tag: fluentTag, Record: record, TS: timestamp})
 		if retCode != output.FLB_OK {
 			return retCode
 		}

@@ -381,24 +381,11 @@ func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cl
 // setGroupStreamNames adds the log group and log stream names to the event struct.
 // This happens by parsing (any) template data in either configured name.
 func (output *OutputPlugin) setGroupStreamNames(e *Event) {
-	// Add the tag to the record so it can be parsed out in the template.
-	split := strings.SplitN(e.Tag, ".", 2)
-	e.Record["TAG"] = e.Tag
-	e.Record["TAG0"] = split[0]
-	e.Record["TAG1"] = ""
-
-	defer func() {
-		delete(e.Record, "TAG")
-		delete(e.Record, "TAG0")
-		delete(e.Record, "TAG1")
-	}()
-
-	if len(split) != 1 {
-		e.Record["TAG1"] = split[1]
-	}
+	// This happens here to avoid running Split more than once per log Event.
+	logTagSplit := strings.SplitN(e.Tag, ".", 10)
 
 	var err error
-	if e.group, err = parseDataMapTags(e.Record, output.logGroupName); err != nil {
+	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName); err != nil {
 		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logGroupName, err)
 	}
 
@@ -411,7 +398,7 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 		return
 	}
 
-	if e.stream, err = parseDataMapTags(e.Record, output.logStreamName); err != nil {
+	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName); err != nil {
 		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
 		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
 	}

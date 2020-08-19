@@ -2,6 +2,7 @@ package cloudwatch
 
 import (
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/valyala/fasttemplate"
@@ -63,7 +64,7 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string) (string, e
 
 // parseDataMapTags parses the provided tag values in template form,
 // from an interface map (expected to contains strings or more maps)
-func parseDataMapTags(data map[interface{}]interface{}, template string) (string, error) {
+func parseDataMapTags(e *Event, logTags []string, template string) (string, error) {
 	t, err := fasttemplate.NewTemplate(template, "${", "}")
 	if err != nil {
 		return "", err
@@ -75,7 +76,21 @@ func parseDataMapTags(data map[interface{}]interface{}, template string) (string
 			v = len(tag)
 		}
 
-		switch val := data[tag[:v]].(type) {
+		if tag[:v] == "tag" {
+			switch {
+			default: // input string is either `tag` or `tag[`
+				return w.Write([]byte(e.Tag))
+			case len(tag) >= 5: // input string is at least tag[x where x is hopefully an integer 0-9.
+				// The index value is always in the same position.
+				if v, _ = strconv.Atoi(tag[4:5]); len(logTags) <= v {
+					return w.Write([]byte("tag" + tag[4:5])) // not enough dots.
+				}
+
+				return w.Write([]byte(logTags[v]))
+			}
+		}
+
+		switch val := e.Record[tag[:v]].(type) {
 		case []byte:
 			return w.Write(val)
 		case string:
