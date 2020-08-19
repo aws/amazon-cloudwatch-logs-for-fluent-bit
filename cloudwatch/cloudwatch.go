@@ -367,19 +367,10 @@ func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]int
 		return output.logStreamPrefix + tag
 	}
 
-	// Add the tag to the record so it can be parsed out in the template.
-	split := strings.SplitN(tag, ".", 2)
-	record["TAG"] = tag
-	record["TAG0"] = split[0]
-	record["TAG1"] = split[1]
+	// This happens here to avoid running Split more than once per log Event.
+	logTagSplit := strings.SplitN(tag, ".", 10)
 
-	defer func() {
-		delete(record, "TAG")
-		delete(record, "TAG0")
-		delete(record, "TAG1")
-	}()
-
-	name, err := parseDataMapTags(record, output.logStreamName)
+	name, err := parseDataMapTags(record, logTagSplit, output.logStreamName)
 	if err != nil {
 		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
 		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)

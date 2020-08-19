@@ -299,7 +299,7 @@ func TestGetStreamName(t *testing.T) {
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", output.getStreamName("syslog.0", record),
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
-	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0}/${TAG1}/${details['region']}/${details['az']}/${ident}"}
+	output = OutputPlugin{logStreamName: "/aws/ecs/${tag[0]}/${tag[1]}/${details['region']}/${details['az']}/${ident}"}
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", output.getStreamName("syslog.0", record),
 		"The stream name template was not correctly parsed.")
 	// Test bad template } missing. Just prints an error and returns the input value.
