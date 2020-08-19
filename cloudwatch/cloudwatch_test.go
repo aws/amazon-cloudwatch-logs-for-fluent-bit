@@ -302,9 +302,13 @@ func TestGetStreamName(t *testing.T) {
 	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0}/${TAG1}/${details['region']}/${details['az']}/${ident}"}
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", output.getStreamName("syslog.0", record),
 		"The stream name template was not correctly parsed.")
-	// Test bad template. Just prints an error and returns the provided value.
+	// Test bad template } missing. Just prints an error and returns the input value.
 	output = OutputPlugin{logStreamName: "/aws/ecs/${TAG0"}
 	assert.Equal(t, "/aws/ecs/${TAG0", output.getStreamName("syslog.0", record),
+		"The provided stream name must match when parsing fails.")
+	// Test another bad template ] missing.
+	output = OutputPlugin{logStreamName: "/aws/ecs/${details['region'}"}
+	assert.Equal(t, "/aws/ecs/${details['region'}", output.getStreamName("syslog.0", record),
 		"The provided stream name must match when parsing fails.")
 }
 

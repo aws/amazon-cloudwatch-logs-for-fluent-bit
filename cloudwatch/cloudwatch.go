@@ -361,9 +361,7 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 }
 
 // getStreamName attempts to return the correct stream name for the corresponding tag and record.
-func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]interface{}) (name string) {
-	var err error
-
+func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]interface{}) string {
 	// Create a dynamic log stream name based on the provided log key from the config.
 	if output.logStreamPrefix != "" {
 		return output.logStreamPrefix + tag
@@ -375,17 +373,20 @@ func (output *OutputPlugin) getStreamName(tag string, record map[interface{}]int
 	record["TAG0"] = split[0]
 	record["TAG1"] = split[1]
 
-	if name, err = digTags(record, output.logStreamName); err != nil {
+	defer func() {
+		delete(record, "TAG")
+		delete(record, "TAG1")
+		delete(record, "TAG2")
+	}()
+
+	name, err := parseDataMapTags(record, output.logStreamName)
+	if err != nil {
 		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
 		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
 	}
 
-	delete(record, "TAG")
-	delete(record, "TAG1")
-	delete(record, "TAG2")
-
 	if name == "" {
-		name = output.logStreamName
+		return output.logStreamName
 	}
 
 	return name

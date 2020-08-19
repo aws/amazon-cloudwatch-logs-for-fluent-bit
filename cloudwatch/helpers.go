@@ -37,21 +37,23 @@ func tagKeysToMap(tags string) map[string]*string {
 	return output
 }
 
-// digKeys takes in an interface map and a list of nested keys. It returns
+// parseKeysTemplate takes in an interface map and a list of nested keys. It returns
 // the value of the final key, or the name of the first key not found in the chain.
-// example keys = ['level1']['level2']['level3'] //.
-func digKeys(data map[interface{}]interface{}, keys string) (string, error) {
+// example keys := "['level1']['level2']['level3']"
+func parseKeysTemplate(data map[interface{}]interface{}, keys string) (string, error) {
 	t, err := fasttemplate.NewTemplate(keys, "['", "']")
 	if err != nil {
 		return "", err
 	}
 
 	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
-		switch x := data[tag].(type) {
+		switch val := data[tag].(type) {
+		case []byte:
+			return w.Write(val)
 		case string:
-			return w.Write([]byte(x))
+			return w.Write([]byte(val))
 		case map[interface{}]interface{}:
-			data = x // drill down another level.
+			data = val // drill down another level.
 			return 0, nil
 		default: // missing
 			return w.Write([]byte(tag))
@@ -59,8 +61,9 @@ func digKeys(data map[interface{}]interface{}, keys string) (string, error) {
 	})
 }
 
-// digTags parses the provided tag values from an interface map (expected to contains strings or more maps)
-func digTags(data map[interface{}]interface{}, template string) (string, error) {
+// parseDataMapTags parses the provided tag values in template form,
+// from an interface map (expected to contains strings or more maps)
+func parseDataMapTags(data map[interface{}]interface{}, template string) (string, error) {
 	t, err := fasttemplate.NewTemplate(template, "${", "}")
 	if err != nil {
 		return "", err
@@ -72,11 +75,13 @@ func digTags(data map[interface{}]interface{}, template string) (string, error) 
 			v = len(tag)
 		}
 
-		switch x := data[tag[:v]].(type) {
+		switch val := data[tag[:v]].(type) {
+		case []byte:
+			return w.Write(val)
 		case string:
-			return w.Write([]byte(x))
+			return w.Write([]byte(val))
 		case map[interface{}]interface{}:
-			keyVal, err := digKeys(x, tag[v:])
+			keyVal, err := parseKeysTemplate(val, tag[v:])
 			if err != nil {
 				return 0, err
 			}

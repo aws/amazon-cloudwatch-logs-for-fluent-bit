@@ -19,18 +19,18 @@ func TestTagKeysToMap(t *testing.T) {
 }
 
 func TestDigTags(t *testing.T) {
-	template := "${tag}.${pam['item2']['subitem2']['more']}.${pam['item']}.${pam['item2']}." +
+	template := "${missing}.${tag}.${pam['item2']['subitem2']['more']}.${pam['item']}.${pam['item2']}." +
 		"${pam['item2']['subitem']}-${pam['item2']['subitem55']}-${pam['item2']['subitem2']['more']}"
 	data := map[interface{}]interface{}{
-		"tag": "syslog.0",
+		"tag": []byte("syslog.0"),
 		"pam": map[interface{}]interface{}{
 			"item": "soup",
-			"item2": map[interface{}]interface{}{"subitem": "SubIt3m",
+			"item2": map[interface{}]interface{}{"subitem": []byte("SubIt3m"),
 				"subitem2": map[interface{}]interface{}{"more": "final"}},
 		},
 	}
-	s, err := digTags(data, template)
+	s, err := parseDataMapTags(data, template)
 
 	assert.Nil(t, err)
-	assert.Equal(t, "syslog.0.final.soup..SubIt3m-subitem55-final", s, "Rendered string is incorrect.")
+	assert.Equal(t, "missing.syslog.0.final.soup..SubIt3m-subitem55-final", s, "Rendered string is incorrect.")
 }

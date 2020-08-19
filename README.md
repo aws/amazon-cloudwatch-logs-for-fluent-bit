@@ -55,6 +55,7 @@ This plugin requires the following permissions:
 * CreateLogStream
 * DescribeLogStreams
 * PutLogEvents
+* PutRetentionPolicy (if `log_retention_days` is set > 0)
 
 ### Credentials
 
