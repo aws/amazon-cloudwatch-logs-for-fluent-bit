@@ -19,8 +19,8 @@ func TestTagKeysToMap(t *testing.T) {
 }
 
 func TestParseDataMapTags(t *testing.T) {
-	template := "${missing}.${tag}.${pam['item2']['subitem2']['more']}.${pam['item']}.${pam['item2']}." +
-		"${pam['item2']['subitem']}-${pam['item2']['subitem55']}-${pam['item2']['subitem2']['more']}-${tag[1]}-${tag[6]}"
+	template := "#(missing).#(tag).#(pam['item2']['subitem2']['more']).#(pam['item']).#(pam['item2'])." +
+		"#(pam['item2']['subitem'])-#(pam['item2']['subitem55'])-#(pam['item2']['subitem2']['more'])-#(tag[1])-#(tag[6])"
 	data := map[interface{}]interface{}{
 		"pam": map[interface{}]interface{}{
 			"item": "soup",

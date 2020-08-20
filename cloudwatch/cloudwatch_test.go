@@ -303,19 +303,19 @@ func TestSetGroupStreamNames(t *testing.T) {
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
-	output = OutputPlugin{logStreamName: "/aws/ecs/${tag[0]}/${tag[1]}/${details['region']}/${details['az']}/${ident}"}
+	output = OutputPlugin{logStreamName: "/aws/ecs/#(tag[0])/#(tag[1])/#(details['region'])/#(details['az'])/#(ident)"}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
 	// Test bad template } missing. Just prints an error and returns the input value.
-	output = OutputPlugin{logStreamName: "/aws/ecs/${tag"}
+	output = OutputPlugin{logStreamName: "/aws/ecs/#(tag"}
 	output.setGroupStreamNames(e)
-	assert.Equal(t, "/aws/ecs/${tag", e.stream,
+	assert.Equal(t, "/aws/ecs/#(tag", e.stream,
 		"The provided stream name must match when parsing fails.")
 	// Test another bad template ] missing.
-	output = OutputPlugin{logStreamName: "/aws/ecs/${details['region'}"}
+	output = OutputPlugin{logStreamName: "/aws/ecs/#(details['region')"}
 	output.setGroupStreamNames(e)
-	assert.Equal(t, "/aws/ecs/${details['region'}", e.stream,
+	assert.Equal(t, "/aws/ecs/#(details['region')", e.stream,
 		"The provided stream name must match when parsing fails.")
 }
 
