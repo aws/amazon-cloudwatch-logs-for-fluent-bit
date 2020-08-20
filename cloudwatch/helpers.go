@@ -65,7 +65,7 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string) (string, e
 // parseDataMapTags parses the provided tag values in template form,
 // from an interface map (expected to contains strings or more maps)
 func parseDataMapTags(data map[interface{}]interface{}, logTags []string, template string) (string, error) {
-	t, err := fasttemplate.NewTemplate(template, "${", "}")
+	t, err := fasttemplate.NewTemplate(template, "#(", ")")
 	if err != nil {
 		return "", err
 	}
