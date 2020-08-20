@@ -307,7 +307,7 @@ func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 }
 
 func (output *OutputPlugin) getLogStream(e *Event) (*logStream, error) {
-	stream, ok := output.streams[e.stream]
+	stream, ok := output.streams[e.group+e.stream]
 	if !ok {
 		// stream doesn't exist, create it
 		stream, err := output.createStream(e)
@@ -343,7 +343,7 @@ func (output *OutputPlugin) existingLogStream(e *Event) (*logStream, error) {
 					logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 					nextSequenceToken: result.UploadSequenceToken,
 				}
-				output.streams[e.stream] = stream
+				output.streams[e.group+e.stream] = stream
 
 				logrus.Debugf("[cloudwatch %d] Initializing internal buffer for exising log stream %s\n", output.PluginInstanceID, e.stream)
 				stream.updateExpiration() // initialize
@@ -428,7 +428,7 @@ func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
 		nextSequenceToken: nil, // sequence token not required for a new log stream
 	}
 	logrus.Debugf("[cloudwatch %d] Created new log stream %s\n", output.PluginInstanceID, e.stream)
-	output.streams[e.stream] = stream
+	output.streams[e.group+e.stream] = stream
 	stream.updateExpiration() // initialize
 	logrus.Debugf("[cloudwatch %d] Created log stream %s", output.PluginInstanceID, e.stream)
 
