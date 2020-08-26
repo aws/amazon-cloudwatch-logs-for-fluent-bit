@@ -32,6 +32,6 @@ func TestLogFormatHandler(t *testing.T) {
 	handler := LogFormatHandler("json/emf")
 	handler.Fn(r)
 
-	header := r.HTTPRequest.Header.Get("x-amzn-logs-format")
+	header := r.HTTPRequest.Header.Get(logFormatHeader)
 	assert.Equal(t, "json/emf", header)
 }

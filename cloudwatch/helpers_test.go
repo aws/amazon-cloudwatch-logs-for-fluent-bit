@@ -8,7 +8,8 @@ import (
 
 func TestTagKeysToMap(t *testing.T) {
 	// Testable values. Purposely "messed up" - they should all parse out OK.
-	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7, k8, k9,key1=value1,space key = space value"
+	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7," +
+		" k8, k9,key1=value1,space key = space value"
 	// The values above should return a map like this.
 	expect := map[string]string{"key1": "value1", "key2": "value2", "key3": "value3",
 		"key4": "", "key5": "v5", "key7": "=value7", "k8": "", "k9": "", "space key": "space value"}
@@ -19,8 +20,8 @@ func TestTagKeysToMap(t *testing.T) {
 }
 
 func TestParseDataMapTags(t *testing.T) {
-	template := "#(missing).#(tag).#(pam['item2']['subitem2']['more']).#(pam['item']).#(pam['item2'])." +
-		"#(pam['item2']['subitem'])-#(pam['item2']['subitem55'])-#(pam['item2']['subitem2']['more'])-#(tag[1])-#(tag[6])"
+	template := "$(missing).$(tag).$(pam['item2']['subitem2']['more']).$(pam['item']).$(pam['item2'])." +
+		"$(pam['item2']['subitem'])-$(pam['item2']['subitem55'])-$(pam['item2']['subitem2']['more'])-$(tag[1])-$(tag[6])"
 	data := map[interface{}]interface{}{
 		"pam": map[interface{}]interface{}{
 			"item": "soup",

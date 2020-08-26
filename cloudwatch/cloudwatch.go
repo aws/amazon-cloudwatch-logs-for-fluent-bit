@@ -115,7 +115,6 @@ type OutputPluginConfig struct {
 	LogKey           string
 	RoleARN          string
 	NewLogGroupTags  string
-	AutoCreateGroup  bool
 	LogRetentionDays int64
 	CWEndpoint       string
 	STSEndpoint      string
@@ -142,6 +141,8 @@ func (config OutputPluginConfig) Validate() error {
 
 // NewOutputPlugin creates a OutputPlugin object
 func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
+	logrus.Debugf("[cloudwatch %d] Initializing NewOutputPlugin", config.PluginInstanceID)
+
 	client, err := newCloudWatchLogsClient(config)
 	if err != nil {
 		return nil, err
@@ -244,6 +245,8 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 
 	// Step 4. Create a missing log group for this Event.
 	if _, ok := output.groups[e.group]; !ok {
+		logrus.Debugf("[cloudwatch %d] Finding log group: %s", output.PluginInstanceID, e.group)
+
 		if err := output.createLogGroup(e); err != nil {
 			logrus.Error(err)
 			return fluentbit.FLB_ERROR
@@ -260,7 +263,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_RETRY
 	}
 
-	// Step 6. Check batch limits and flush buffer.
+	// Step 6. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
 	countLimit := len(stream.logEvents) == maximumLogEventsPerPut
 	sizeLimit := (stream.currentByteLength + cloudwatchLen(eventString)) >= maximumBytesPerPut
 	spanLimit := stream.logBatchSpan(e.TS) >= maximumTimeSpanPerPut
@@ -296,9 +299,11 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	if output.nextLogStreamCleanUpCheckTime.Before(time.Now()) {
 		logrus.Debugf("[cloudwatch %d] Checking for expired log streams", output.PluginInstanceID)
+
 		for name, stream := range output.streams {
 			if stream.isExpired() {
-				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s; the stream has not been written to for %s", output.PluginInstanceID, stream.logStreamName, logStreamInactivityTimeout.String())
+				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s in group %s; the stream has not been written to for %s",
+					output.PluginInstanceID, stream.logStreamName, stream.logGroupName, logStreamInactivityTimeout.String())
 				delete(output.streams, name)
 			}
 		}
@@ -427,10 +432,9 @@ func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
 		logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 		nextSequenceToken: nil, // sequence token not required for a new log stream
 	}
-	logrus.Debugf("[cloudwatch %d] Created new log stream %s\n", output.PluginInstanceID, e.stream)
 	output.streams[e.group+e.stream] = stream
 	stream.updateExpiration() // initialize
-	logrus.Debugf("[cloudwatch %d] Created log stream %s", output.PluginInstanceID, e.stream)
+	logrus.Infof("[cloudwatch %d] Created log stream %s in group %s", output.PluginInstanceID, e.stream, e.group)
 
 	return stream, nil
 }
@@ -510,6 +514,8 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 
 // Flush sends the current buffer of records.
 func (output *OutputPlugin) Flush() error {
+	logrus.Debugf("[cloudwatch %d] Flush() Called", output.PluginInstanceID)
+
 	for _, stream := range output.streams {
 		if err := output.flushStream(stream); err != nil {
 			return err
@@ -571,7 +577,8 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	}
 	output.processRejectedEventsInfo(response)
 	output.timer.Reset()
-	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch\n", output.PluginInstanceID, len(stream.logEvents))
+	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch for stream '%s' in group '%s'",
+		output.PluginInstanceID, len(stream.logEvents), stream.logStreamName, stream.logGroupName)
 
 	stream.nextSequenceToken = response.NextSequenceToken
 	stream.logEvents = stream.logEvents[:0]

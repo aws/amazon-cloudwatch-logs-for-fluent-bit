@@ -72,7 +72,7 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	config.LogStreamPrefix = output.FLBPluginConfigKey(ctx, "log_stream_prefix")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_prefix = '%s'", pluginID, config.LogStreamPrefix)
 	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")
-	logrus.Infof("[cloudwatch %d] plugin parameter log_stream = '%s'", pluginID, config.LogStreamName)
+	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_name = '%s'", pluginID, config.LogStreamName)
 	config.Region = output.FLBPluginConfigKey(ctx, "region")
 	logrus.Infof("[cloudwatch %d] plugin parameter region = '%s'", pluginID, config.Region)
 	config.LogKey = output.FLBPluginConfigKey(ctx, "log_key")
@@ -81,8 +81,6 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	logrus.Infof("[cloudwatch %d] plugin parameter role_arn = '%s'", pluginID, config.RoleARN)
 	config.NewLogGroupTags = output.FLBPluginConfigKey(ctx, "new_log_group_tags")
 	logrus.Infof("[cloudwatch %d] plugin parameter new_log_group_tags = '%s'", pluginID, config.NewLogGroupTags)
-	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
-	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_group = '%v'", pluginID, config.AutoCreateGroup)
 	config.LogRetentionDays, _ = strconv.ParseInt(output.FLBPluginConfigKey(ctx, "log_retention_days"), 10, 64)
 	logrus.Infof("[cloudwatch %d] plugin parameter log_retention_days = '%d'", pluginID, config.LogRetentionDays)
 	config.CWEndpoint = output.FLBPluginConfigKey(ctx, "endpoint")
@@ -167,7 +165,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 		return output.FLB_RETRY
 	}
 
-	logrus.Debugf("[cloudwatch %d] Processed %d events with tag %s", cloudwatchLogs.PluginInstanceID, count, fluentTag)
+	logrus.Debugf("[cloudwatch %d] Processed %d events", cloudwatchLogs.PluginInstanceID, count)
 
 	// Return options:
 	//
