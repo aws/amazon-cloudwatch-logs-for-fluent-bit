@@ -14,6 +14,7 @@
 package cloudwatch
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -35,8 +36,9 @@ import (
 
 const (
 	// See: http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
-	perEventBytes          = 26
-	maximumBytesPerPut     = 1048576
+	perEventBytes          = 26 // this represents the json overhead.
+	maximumBytesPerEvent   = 256000 - perEventBytes
+	maximumBytesPerPut     = 1048576 - perEventBytes // subtract 1 event here to avoid calculation during loop.
 	maximumLogEventsPerPut = 10000
 	maximumTimeSpanPerPut  = time.Hour * 24
 )
@@ -70,13 +72,15 @@ type logStream struct {
 }
 
 // Event is the input data and contains a log entry.
-// The group and stream are added during processing.
 type Event struct {
 	TS     time.Time
 	Record map[interface{}]interface{}
 	Tag    string
-	group  string
-	stream string
+	// These are added during processing.
+	group  string // dynamic log group
+	stream string // dynamic log stream
+	string string // string-converted and (possibly) truncated log line
+	bytes  int    // number of bytes in the UTF8 string.
 }
 
 func (stream *logStream) isExpired() bool {
@@ -243,10 +247,9 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 	}
 
 	// Step 2. Make sure the Event data isn't empty.
-	eventString := strings.TrimSpace(string(data))
-	if len(eventString) == 0 {
-		logrus.Debugf("[cloudwatch %d] Discarding an event from publishing as it is empty.",
-			output.PluginInstanceID)
+	e.string, e.bytes = truncateEvent(bytes.TrimSpace(data))
+	if e.bytes <= 0 {
+		logrus.Debugf("[cloudwatch %d] Discarded Empty Event.", output.PluginInstanceID)
 		// discard this single empty record and let the batch continue
 		return fluentbit.FLB_OK
 	}
@@ -274,32 +277,32 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_RETRY
 	}
 
-	// Step 6. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
+	// Step 6 (and 7).
+	// - Check batch limits and flush buffer if any limits will be exeeded by this log Entry.
+	// - Add this event to the running tally.
+	return output.addEvent(e, stream)
+}
+
+// addEvent is the final step in the exported AddEvent method.
+// This procedure appends the event to the internal running buffer.
+// This procedure also flushes the buffer if it's reached any limits.
+// The internal buffer gets flushed at an interval or when it's too big or too old.
+func (output *OutputPlugin) addEvent(e *Event, stream *logStream) int {
 	if len(stream.logEvents) == maximumLogEventsPerPut || // count limit
-		(stream.currentByteLength+cloudwatchLen(eventString)) >= maximumBytesPerPut || //s izeLimit
+		(stream.currentByteLength+e.bytes) >= maximumBytesPerPut || // sizeLimit
 		stream.logBatchSpan(e.TS) >= maximumTimeSpanPerPut { // spanLimit
-		if err = output.putLogEvents(stream); err != nil {
+		if err := output.putLogEvents(stream); err != nil {
 			logrus.Errorf("[cloudwatch %d] putLogEvents: %v", output.PluginInstanceID, err)
 			// send failures are retryable
 			return fluentbit.FLB_RETRY
 		}
 	}
 
-	// Step 7. Add this event to the running tally.
-	output.addEvent(e, stream, eventString)
-
-	return fluentbit.FLB_OK
-}
-
-// addEvent is the final step in the exported AddEvent method.
-// This procedure appends the event to the internal running buffer.
-// The internal buffer gets flushed at an interval or when it's too big or too old.
-func (output *OutputPlugin) addEvent(e *Event, stream *logStream, eventString string) {
 	stream.logEvents = append(stream.logEvents, &cloudwatchlogs.InputLogEvent{
-		Message:   aws.String(eventString),
+		Message:   aws.String(e.string),
 		Timestamp: aws.Int64(e.TS.UnixNano() / millisecond), // CloudWatch uses milliseconds since epoch
 	})
-	stream.currentByteLength += cloudwatchLen(eventString)
+	stream.currentByteLength += e.bytes + perEventBytes
 
 	if stream.currentBatchStart == nil || stream.currentBatchStart.After(e.TS) {
 		stream.currentBatchStart = &e.TS
@@ -308,6 +311,8 @@ func (output *OutputPlugin) addEvent(e *Event, stream *logStream, eventString st
 	if stream.currentBatchEnd == nil || stream.currentBatchEnd.Before(e.TS) {
 		stream.currentBatchEnd = &e.TS
 	}
+
+	return fluentbit.FLB_OK
 }
 
 // This plugin tracks CW Log streams.

@@ -4,13 +4,13 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"github.com/valyala/fasttemplate"
 )
 
 // tagKeysToMap converts a raw string into a go map.
 // This is used by input data to create AWS tags applied to newly-created log groups.
+// This procedure only runs once for each input that uses a map (just 1 at the time of this writing).
 //
 // The input string should be match this: "key=value,key2=value2".
 // Spaces are trimmed, empty values are permitted, empty keys are ignored.
@@ -87,7 +87,7 @@ func parseDataMapTags(e *Event, logTags []string, template string) (string, erro
 			switch {
 			default: // input string is either `tag` or `tag[`, so return the $tag.
 				return w.Write([]byte(e.Tag))
-			case len(tag) >= 5: // input string is at least "tag[x" where x is hopefully an integer 0-9.
+			case len(tag) >= 5: // nolint: gomnd // input string is at least "tag[x" where x is hopefully an integer 0-9.
 				// The index value is always in the same position: 4:5 (this is why supporting more than 0-9 is rough)
 				if v, _ = strconv.Atoi(tag[4:5]); len(logTags) <= v {
 					// not enough dots the tag to satisfy the index position, so return whatever the input string was.
@@ -117,19 +117,12 @@ func parseDataMapTags(e *Event, logTags []string, template string) (string, erro
 	})
 }
 
-// effectiveLen counts the effective number of bytes in the string, after
-// UTF-8 normalization.  UTF-8 normalization includes replacing bytes that do
-// not constitute valid UTF-8 encoded Unicode codepoints with the Unicode
-// replacement codepoint U+FFFD (a 3-byte UTF-8 sequence, represented in Go as
-// utf8.RuneError)
-func effectiveLen(line string) (effectiveBytes int) {
-	for _, rune := range line {
-		effectiveBytes += utf8.RuneLen(rune)
+// truncateEvent reduces an Event to the Cloudwatch maximum of 256KB.
+// This function also returns the event byte count.
+func truncateEvent(event []byte) (string, int) {
+	if len(event) <= maximumBytesPerEvent {
+		return string(event), len(event)
 	}
 
-	return effectiveBytes
-}
-
-func cloudwatchLen(event string) int {
-	return effectiveLen(event) + perEventBytes
+	return string(event[:maximumBytesPerEvent]), maximumBytesPerEvent
 }
