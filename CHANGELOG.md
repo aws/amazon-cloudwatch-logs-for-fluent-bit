@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+* Feature - Add support for dynamic log group names (#46)
+* Feature - Add support for dynamic log stream names (#16)
+* Feature - Support tagging of newly created log groups (#51)
+* Feature - Support setting log group retention policies (#50)
+
 ## 1.3.1
 * Bug - Check for empty logEvents before calling PutLogEvents (#66)
 
