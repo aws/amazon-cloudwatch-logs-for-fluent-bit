@@ -106,7 +106,7 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	return config
 }
 
-// FLBPluginInit is exported for fluent-bit.
+//export FLBPluginInit
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	setupLogger()
 
@@ -119,7 +119,7 @@ func FLBPluginInit(ctx unsafe.Pointer) int {
 	return output.FLB_OK
 }
 
-// FLBPluginFlushCtx is exported for fluent-bit.
+//export FLBPluginFlushCtx
 func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int {
 	var (
 		count     int
@@ -182,7 +182,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 	return output.FLB_OK
 }
 
-// FLBPluginExit is exported for fluent-bit.
+//export FLBPluginExit
 func FLBPluginExit() int {
 	return output.FLB_OK
 }
