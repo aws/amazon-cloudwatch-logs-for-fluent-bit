@@ -262,8 +262,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		logrus.Debugf("[cloudwatch %d] Finding log group: %s", output.PluginInstanceID, e.group)
 
 		if err := output.createLogGroup(e); err != nil {
-			logrus.Error(err)
-			return fluentbit.FLB_ERROR
+			logrus.Errorln("Ignored:", err)
 		}
 
 		output.groups[e.group] = struct{}{}

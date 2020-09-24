@@ -7,6 +7,8 @@ import (
 )
 
 func TestTagKeysToMap(t *testing.T) {
+	t.Parallel()
+
 	// Testable values. Purposely "messed up" - they should all parse out OK.
 	values := " key1 =value , key2=value2, key3= value3 ,key4=, key5  = v5,,key7==value7," +
 		" k8, k9,key1=value1,space key = space value"
@@ -20,6 +22,8 @@ func TestTagKeysToMap(t *testing.T) {
 }
 
 func TestParseDataMapTags(t *testing.T) {
+	t.Parallel()
+
 	template := "$(missing).$(tag).$(pam['item2']['subitem2']['more']).$(pam['item']).$(pam['item2'])." +
 		"$(pam['item2']['subitem'])-$(pam['item2']['subitem55'])-$(pam['item2']['subitem2']['more'])-$(tag[1])-$(tag[6])"
 	data := map[interface{}]interface{}{
@@ -33,4 +37,25 @@ func TestParseDataMapTags(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.Equal(t, "missing.syslog.0.final.soup..SubIt3m-subitem55-final-0-tag6", s, "Rendered string is incorrect.")
+}
+
+func TestTruncateEvent(t *testing.T) {
+	t.Parallel()
+
+	// Make a long string.
+	event := make([]byte, maximumBytesPerEvent+100)
+	for i := range event {
+		event[i] = 'x'
+	}
+
+	truncated, size := truncateEvent(event)
+
+	assert.Equal(t, maximumBytesPerEvent, len(truncated), "The event was not correctly truncated.")
+	assert.Equal(t, maximumBytesPerEvent, size, "The returned byte count is invalid.")
+
+	event = []byte("This is a short event.")
+	truncated, size = truncateEvent(event)
+
+	assert.Equal(t, event, []byte(truncated), "The event was truncated and should not have been.")
+	assert.Equal(t, len(event), size, "The returned byte count does not match the event length.")
 }

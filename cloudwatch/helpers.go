@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	"github.com/valyala/fasttemplate"
 )
 
@@ -124,5 +125,7 @@ func truncateEvent(event []byte) (string, int) {
 		return string(event), len(event)
 	}
 
+	logrus.Warnf("Found event with %d bytes, truncating %d bytes to %d (max size).",
+		len(event), len(event)-maximumBytesPerEvent, maximumBytesPerEvent)
 	return string(event[:maximumBytesPerEvent]), maximumBytesPerEvent
 }
