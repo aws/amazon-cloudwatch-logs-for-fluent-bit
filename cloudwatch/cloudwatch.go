@@ -37,11 +37,13 @@ import (
 const (
 	// See: http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	perEventBytes          = 26 // this represents the json overhead.
-	maximumBytesPerEvent   = 256000 - perEventBytes
+	maximumBytesPerEvent   = 1024*256 - perEventBytes
 	maximumBytesPerPut     = 1048576 - perEventBytes // subtract 1 event here to avoid calculation during loop.
 	maximumLogEventsPerPut = 10000
 	maximumTimeSpanPerPut  = time.Hour * 24
+	truncatedSuffix        = "[Truncated...]"
 )
+
 const (
 	millisecond       = int64(time.Millisecond)
 	credsExpiryWindow = 5 * time.Minute
@@ -247,8 +249,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 	}
 
 	// Step 2. Make sure the Event data isn't empty.
-	e.string, e.bytes = truncateEvent(bytes.TrimSpace(data))
-	if e.bytes <= 0 {
+	if data = bytes.TrimSpace(data); len(data) == 0 {
 		logrus.Debugf("[cloudwatch %d] Discarded Empty Event.", output.PluginInstanceID)
 		// discard this single empty record and let the batch continue
 		return fluentbit.FLB_OK
@@ -275,6 +276,9 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		// an error means that the log stream was not created; this is retryable
 		return fluentbit.FLB_RETRY
 	}
+
+	// Step 5.5. Trim the event if too large, convert to string and get byte count.
+	e.string, e.bytes = output.truncateEvent(e, data)
 
 	// Step 6 (and 7).
 	// - Check batch limits and flush buffer if any limits will be exeeded by this log Entry.
@@ -627,6 +631,14 @@ func (output *OutputPlugin) handlePutLogError(stream *logStream, err error) erro
 		parts := strings.Split(awsErr.Message(), " ")
 		stream.nextSequenceToken = &parts[len(parts)-1]
 
+		return output.putLogEvents(stream)
+	case cloudwatchlogs.ErrCodeResourceNotFoundException:
+		// The log group got deleted; try to recreate it.
+		if err = output.createLogGroup(&Event{group: stream.logGroupName}); err != nil {
+			return err
+		}
+
+		// This could cause a loop, so be careful what happens above.
 		return output.putLogEvents(stream)
 	default:
 		output.timer.Start()

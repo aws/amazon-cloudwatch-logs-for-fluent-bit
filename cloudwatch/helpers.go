@@ -120,12 +120,12 @@ func parseDataMapTags(e *Event, logTags []string, template string) (string, erro
 
 // truncateEvent reduces an Event to the Cloudwatch maximum of 256KB.
 // This function also returns the event byte count.
-func truncateEvent(event []byte) (string, int) {
-	if len(event) <= maximumBytesPerEvent {
-		return string(event), len(event)
+func (output *OutputPlugin) truncateEvent(e *Event, data []byte) (string, int) {
+	if len(data) <= maximumBytesPerEvent {
+		return string(data), len(data)
 	}
 
-	logrus.Warnf("Found event with %d bytes, truncating %d bytes to %d (max size).",
-		len(event), len(event)-maximumBytesPerEvent, maximumBytesPerEvent)
-	return string(event[:maximumBytesPerEvent]), maximumBytesPerEvent
+	logrus.Warnf("[cloudwatch %d] Found event with %d bytes, truncating %d bytes to %d (max size), logGroup=%s, stream=%s",
+		output.PluginInstanceID, len(data), len(data)-maximumBytesPerEvent, maximumBytesPerEvent, e.group, e.stream)
+	return string(data[:maximumBytesPerEvent-len(truncatedSuffix)]) + truncatedSuffix, maximumBytesPerEvent
 }

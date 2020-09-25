@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -48,13 +49,15 @@ func TestTruncateEvent(t *testing.T) {
 		event[i] = 'x'
 	}
 
-	truncated, size := truncateEvent(event)
+	output := &OutputPlugin{PluginInstanceID: 0}
+	truncated, size := output.truncateEvent(&Event{group: "group", stream: "stream"}, event)
 
 	assert.Equal(t, maximumBytesPerEvent, len(truncated), "The event was not correctly truncated.")
 	assert.Equal(t, maximumBytesPerEvent, size, "The returned byte count is invalid.")
+	assert.True(t, strings.HasSuffix(truncated, truncatedSuffix), "truncation suffix missing or invalid")
 
 	event = []byte("This is a short event.")
-	truncated, size = truncateEvent(event)
+	truncated, size = output.truncateEvent(&Event{}, event)
 
 	assert.Equal(t, event, []byte(truncated), "The event was truncated and should not have been.")
 	assert.Equal(t, len(event), size, "The returned byte count does not match the event length.")

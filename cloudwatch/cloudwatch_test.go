@@ -508,3 +508,16 @@ func setupTimeout() *plugins.Timeout {
 	})
 	return timer
 }
+
+// https://github.com/aws/amazon-cloudwatch-logs-for-fluent-bit/issues/16
+func TestIssue16(t *testing.T) {
+	template := "$(kubernetes['pod_name']).$(fvr_log_group)"
+	nv := map[interface{}]interface{}{
+		"fvr_log_group": "lonnix",
+		"kubernetes":    map[interface{}]interface{}{"pod_name": "kube-proxy-tf655"},
+	}
+	s, err := parseDataMapTags(&Event{Record: nv, Tag: "syslog.0"}, []string{"syslog", "0"}, template)
+
+	assert.Nil(t, err, err)
+	assert.Equal(t, "kube-proxy-tf655.lonnix", s)
+}
