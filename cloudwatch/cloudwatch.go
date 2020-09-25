@@ -105,6 +105,7 @@ type OutputPlugin struct {
 	PluginInstanceID              int
 	logGroupTags                  map[string]*string
 	logGroupRetention             int64
+	autoCreateGroup               bool
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -115,6 +116,7 @@ type OutputPluginConfig struct {
 	LogStreamName    string
 	LogKey           string
 	RoleARN          string
+	AutoCreateGroup  bool
 	NewLogGroupTags  string
 	LogRetentionDays int64
 	CWEndpoint       string
@@ -170,6 +172,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		PluginInstanceID:              config.PluginInstanceID,
 		logGroupTags:                  tagKeysToMap(config.NewLogGroupTags),
 		logGroupRetention:             config.LogRetentionDays,
+		autoCreateGroup:               config.AutoCreateGroup,
 		groups:                        make(map[string]struct{}),
 	}, nil
 }
@@ -441,6 +444,10 @@ func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
 }
 
 func (output *OutputPlugin) createLogGroup(e *Event) error {
+	if !output.autoCreateGroup {
+		return nil
+	}
+
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(e.group),
 		Tags:         output.logGroupTags,

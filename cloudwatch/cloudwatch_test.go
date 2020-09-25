@@ -121,6 +121,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		streams:           make(map[string]*logStream),
 		groups:            make(map[string]struct{}),
 		logGroupRetention: 14,
+		autoCreateGroup:   true,
 	}
 
 	record := map[interface{}]interface{}{
