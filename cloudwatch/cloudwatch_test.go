@@ -67,6 +67,39 @@ func TestAddEvent(t *testing.T) {
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
 }
 
+func TestTruncateLargeLogEvent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+
+	output := OutputPlugin{
+		logGroupName:    testLogGroup,
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		groups:          map[string]struct{}{testLogGroup: {}},
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": make([]byte, 256*1024+100),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	actualData, err := output.processRecord(&Event{TS: time.Now(), Tag: testTag, Record: record})
+
+	if err != nil {
+		logrus.Debugf("[cloudwatch %d] Failed to process record: %v\n", output.PluginInstanceID, record)
+	}
+
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to be FLB_OK")
+	assert.Len(t, actualData, 256*1024-26, "Expected length is 256*1024-26")
+}
+
 func TestAddEventCreateLogGroup(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
@@ -88,6 +121,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		streams:           make(map[string]*logStream),
 		groups:            make(map[string]struct{}),
 		logGroupRetention: 14,
+		autoCreateGroup:   true,
 	}
 
 	record := map[interface{}]interface{}{
