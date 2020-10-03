@@ -31,6 +31,7 @@ import (
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
+	"github.com/valyala/fasttemplate"
 )
 
 const (
@@ -41,6 +42,7 @@ const (
 	maximumBytesPerEvent   = 1024 * 256 //256KB
 	maximumTimeSpanPerPut  = time.Hour * 24
 	truncatedSuffix        = "[Truncated...]"
+	maxGroupStreamLength   = 512
 )
 
 const (
@@ -93,9 +95,9 @@ func (stream *logStream) updateExpiration() {
 
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
-	logGroupName                  string
+	logGroupName                  *fasttemplate.Template
 	logStreamPrefix               string
-	logStreamName                 string
+	logStreamName                 *fasttemplate.Template
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -155,15 +157,24 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
 		logrus.Fatalf("[cloudwatch %d] Quitting Fluent Bit", config.PluginInstanceID) // exit the plugin and kill Fluent Bit
 	})
+	if err != nil {
+		return nil, err
+	}
 
+	logGroupTemplate, err := fasttemplate.NewTemplate(config.LogGroupName, "$(", ")")
+	if err != nil {
+		return nil, err
+	}
+
+	logStreamTemplate, err := fasttemplate.NewTemplate(config.LogStreamName, "$(", ")")
 	if err != nil {
 		return nil, err
 	}
 
 	return &OutputPlugin{
-		logGroupName:                  config.LogGroupName,
+		logGroupName:                  logGroupTemplate,
+		logStreamName:                 logStreamTemplate,
 		logStreamPrefix:               config.LogStreamPrefix,
-		logStreamName:                 config.LogStreamName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -394,26 +405,27 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
 
 	var err error
-	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logGroupName, err)
+	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName, sanitizeGroup); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing logGroupName template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.group == "" {
-		e.group = output.logGroupName
+	if len(e.group) > maxGroupStreamLength {
+		e.group = e.group[:maxGroupStreamLength]
 	}
 
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
+
 		return
 	}
 
-	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName); err != nil {
+	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName, sanitizeStream); err != nil {
 		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
+		logrus.Errorf("[cloudwatch %d] parsing logStreamName template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.stream == "" {
-		e.stream = output.logStreamName
+	if len(e.stream) > maxGroupStreamLength {
+		e.stream = e.stream[:maxGroupStreamLength]
 	}
 }
 
@@ -521,7 +533,8 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	data = append(data, []byte("\n")...)
 
 	if (len(data) + perEventBytes) > maximumBytesPerEvent {
-		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n", output.PluginInstanceID, len(data)+perEventBytes, output.logGroupName, output.logStreamName)
+		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n",
+			output.PluginInstanceID, len(data)+perEventBytes, e.group, e.stream)
 		data = data[:(maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)]
 		data = append(data, []byte(truncatedSuffix)...)
 	}
