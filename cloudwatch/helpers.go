@@ -73,10 +73,6 @@ func parseDataMapTags(e *Event, logTags []string, t *fasttemplate.Template,
 		return "", nil
 	}
 
-	if sanitize == nil { // allow testing without a sanitizer.
-		sanitize = func(b []byte) []byte { return b }
-	}
-
 	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
 		v := strings.Index(tag, "[")
 		if v == -1 {

@@ -35,7 +35,7 @@ func TestParseDataMapTags(t *testing.T) {
 		},
 	}
 	s, err := parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"},
-		fasttemplate.New(template, "$(", ")"), nil)
+		fasttemplate.New(template, "$(", ")"), sanitizeGroup)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "missing.syslog.0.final.soup..SubIt3m-subitem55-final-0-tag6", s, "Rendered string is incorrect.")
