@@ -334,7 +334,10 @@ func TestSetGroupStreamNames(t *testing.T) {
 	e := &Event{Tag: "syslog.0", Record: record}
 
 	// Test against non-template name.
-	output := OutputPlugin{logStreamName: testTemplate("/aws/ecs/test-stream-name")}
+	output := OutputPlugin{
+		logStreamName: testTemplate("/aws/ecs/test-stream-name"),
+		logGroupName:  testTemplate(""),
+	}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/test-stream-name", e.stream,
 		"The provided stream name must be returned exactly, without modifications.")
@@ -344,12 +347,13 @@ func TestSetGroupStreamNames(t *testing.T) {
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
-	output = OutputPlugin{logStreamName: testTemplate("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)")}
+	output.logStreamPrefix = ""
+	output.logStreamName = testTemplate("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)")
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
 	// Test another bad template ] missing.
-	output = OutputPlugin{logStreamName: testTemplate("/aws/ecs/$(details['region')")}
+	output.logStreamName = testTemplate("/aws/ecs/$(details['region')")
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/['region'", e.stream,
 		"The provided stream name must match when parsing fails.")
@@ -364,10 +368,9 @@ func TestSetGroupStreamNames(t *testing.T) {
 	assert.True(t, len(ident) > maxGroupStreamLength, "test string creation failed")
 
 	e.Record = map[interface{}]interface{}{"ident": ident} // set the long string into our record.
-	output = OutputPlugin{
-		logStreamName: testTemplate("/aws/ecs/$(ident)"),
-		logGroupName:  testTemplate("/aws/ecs/$(ident)"),
-	}
+	output.logStreamName = testTemplate("/aws/ecs/$(ident)")
+	output.logGroupName = testTemplate("/aws/ecs/$(ident)")
+
 	output.setGroupStreamNames(e)
 	assert.Equal(t, maxGroupStreamLength, len(e.stream), "the stream name should be truncated to the maximum size")
 	assert.Equal(t, maxGroupStreamLength, len(e.group), "the group name should be truncated to the maximum size")

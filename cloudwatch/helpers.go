@@ -69,9 +69,6 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string, sanitize f
 // If a sanitize function is provided, it runs before writing the data.
 func parseDataMapTags(e *Event, logTags []string, t *fasttemplate.Template,
 	sanitize func(b []byte) []byte) (string, error) {
-	if t == nil {
-		return "", nil
-	}
 
 	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
 		v := strings.Index(tag, "[")
