@@ -109,6 +109,7 @@ type OutputPlugin struct {
 	logGroupTags                  map[string]*string
 	logGroupRetention             int64
 	autoCreateGroup               bool
+	bufferPool                    bytebufferpool.Pool
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -404,14 +405,13 @@ func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cl
 func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	// This happens here to avoid running Split more than once per log Event.
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
+	s := &sanitizer{sanitize: sanitizeGroup, buf: output.bufferPool.Get()}
 
-	s := &sanitizer{sanitize: sanitizeGroup, buf: bytebufferpool.Get()}
 	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
 		logrus.Errorf("[cloudwatch %d] parsing log_group_name template: %v", output.PluginInstanceID, err)
 	}
 
-	e.group = s.buf.String()
-	if len(e.group) > maxGroupStreamLength {
+	if e.group = s.buf.String(); len(e.group) > maxGroupStreamLength {
 		e.group = e.group[:maxGroupStreamLength]
 	}
 
@@ -419,7 +419,7 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
-		bytebufferpool.Put(s.buf)
+		output.bufferPool.Put(s.buf)
 
 		return
 	}
@@ -430,13 +430,11 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template: %v", output.PluginInstanceID, err)
 	}
 
-	e.stream = s.buf.String()
-	if len(e.stream) > maxGroupStreamLength {
+	if e.stream = s.buf.String(); len(e.stream) > maxGroupStreamLength {
 		e.stream = e.stream[:maxGroupStreamLength]
 	}
 
-	s.buf.Reset()
-	bytebufferpool.Put(s.buf)
+	output.bufferPool.Put(s.buf)
 }
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
