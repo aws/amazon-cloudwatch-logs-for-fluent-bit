@@ -44,7 +44,7 @@ const (
 // helper function to make a log stream/log group name template from a string.
 func testTemplate(template string) *fastTemplate {
 	t, _ := newTemplate(template)
-	return &fastTemplate{Template: t, String: template}
+	return t
 }
 
 func TestAddEvent(t *testing.T) {

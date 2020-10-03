@@ -179,8 +179,8 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}
 
 	return &OutputPlugin{
-		logGroupName:                  &fastTemplate{Template: logGroupTemplate, String: config.LogGroupName},
-		logStreamName:                 &fastTemplate{Template: logStreamTemplate, String: config.LogStreamName},
+		logGroupName:                  logGroupTemplate,
+		logStreamName:                 logStreamTemplate,
 		logStreamPrefix:               config.LogStreamPrefix,
 		logKey:                        config.LogKey,
 		client:                        client,

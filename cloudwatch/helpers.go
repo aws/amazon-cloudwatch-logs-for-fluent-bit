@@ -10,8 +10,9 @@ import (
 )
 
 // newTemplate is the only place you'll find the template start and end tags.
-func newTemplate(template string) (*fasttemplate.Template, error) {
-	return fasttemplate.NewTemplate(template, "$(", ")")
+func newTemplate(template string) (*fastTemplate, error) {
+	t, err := fasttemplate.NewTemplate(template, "$(", ")")
+	return &fastTemplate{Template: t, String: template}, err
 }
 
 // tagKeysToMap converts a raw string into a go map.
