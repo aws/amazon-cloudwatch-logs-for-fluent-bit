@@ -31,6 +31,7 @@ import (
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasttemplate"
 )
 
@@ -404,29 +405,38 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	// This happens here to avoid running Split more than once per log Event.
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
 
-	var err error
-	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName, sanitizeGroup); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing logGroupName template: %v", output.PluginInstanceID, err)
+	s := &sanitizer{sanitize: sanitizeGroup, buf: bytebufferpool.Get()}
+	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing log_group_name template: %v", output.PluginInstanceID, err)
 	}
 
+	e.group = s.buf.String()
 	if len(e.group) > maxGroupStreamLength {
 		e.group = e.group[:maxGroupStreamLength]
 	}
 
+	s.buf.Reset()
+
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
+		bytebufferpool.Put(s.buf)
 
 		return
 	}
 
-	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName, sanitizeStream); err != nil {
-		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
-		logrus.Errorf("[cloudwatch %d] parsing logStreamName template: %v", output.PluginInstanceID, err)
+	s.sanitize = sanitizeStream
+
+	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, s); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template: %v", output.PluginInstanceID, err)
 	}
 
+	e.stream = s.buf.String()
 	if len(e.stream) > maxGroupStreamLength {
 		e.stream = e.stream[:maxGroupStreamLength]
 	}
+
+	s.buf.Reset()
+	bytebufferpool.Put(s.buf)
 }
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
