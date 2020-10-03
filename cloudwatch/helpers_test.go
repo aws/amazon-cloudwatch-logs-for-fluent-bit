@@ -48,7 +48,7 @@ func TestSanitizeGroup(t *testing.T) {
 		"this.is.a.log.group.name":             "this.is.a.log.group.name",
 		"1234567890abcdefghijklmnopqrstuvwxyz": "1234567890abcdefghijklmnopqrstuvwxyz",
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ":           "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-		`!@#$%^&*()_+}{][=-';":/.?>,<~"']}`:    "_________________-____/._________",
+		`!@#$%^&*()_+}{][=-';":/.?>,<~"']}`:    ".........._......-..../..........",
 		"":                                     "",
 	}
 
@@ -65,7 +65,7 @@ func TestSanitizeStream(t *testing.T) {
 		"this.is.a.log.group.name":             "this.is.a.log.group.name",
 		"1234567890abcdefghijklmnopqrstuvwxyz": "1234567890abcdefghijklmnopqrstuvwxyz",
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ":           "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-		`!@#$%^&*()_+}{][=-';":/.?>,<~"']}`:    `!@#$%^&_()_+}{][=-';"_/.?>,<~"']}`,
+		`!@#$%^&*()_+}{][=-';":/.?>,<~"']}`:    `!@#$%^&.()_+}{][=-';"./.?>,<~"']}`,
 		"":                                     "",
 	}
 

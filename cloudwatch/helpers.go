@@ -128,7 +128,7 @@ func sanitizeGroup(b []byte) []byte {
 			continue
 		}
 
-		b[i] = '_'
+		b[i] = '.'
 	}
 
 	return b
@@ -139,7 +139,7 @@ func sanitizeGroup(b []byte) []byte {
 func sanitizeStream(b []byte) []byte {
 	for i, r := range b {
 		if r == '*' || r == ':' {
-			b[i] = '_'
+			b[i] = '.'
 		}
 	}
 
