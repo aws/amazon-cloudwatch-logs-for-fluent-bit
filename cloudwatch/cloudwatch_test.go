@@ -30,7 +30,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/valyala/fasttemplate"
 )
 
 const (
@@ -43,9 +42,9 @@ const (
 )
 
 // helper function to make a log stream/log group name template from a string.
-func testTemplate(template string) *fasttemplate.Template {
+func testTemplate(template string) *fastTemplate {
 	t, _ := newTemplate(template)
-	return t
+	return &fastTemplate{Template: t, String: template}
 }
 
 func TestAddEvent(t *testing.T) {

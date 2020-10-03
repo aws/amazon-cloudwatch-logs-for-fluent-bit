@@ -71,7 +71,7 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string, w io.Write
 // from an interface{} map (expected to contain strings or more interface{} maps).
 // This runs once for every log line.
 // Used to fill in any template variables that may exist in the logStream or logGroup names.
-func parseDataMapTags(e *Event, logTags []string, t *fasttemplate.Template, w io.Writer) (int64, error) {
+func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, w io.Writer) (int64, error) {
 	return t.ExecuteFunc(w, func(w io.Writer, tag string) (int, error) {
 		v := strings.Index(tag, "[")
 		if v == -1 {

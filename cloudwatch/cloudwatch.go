@@ -94,11 +94,16 @@ func (stream *logStream) updateExpiration() {
 	stream.expiration = time.Now().Add(logStreamInactivityTimeout)
 }
 
+type fastTemplate struct {
+	String string
+	*fasttemplate.Template
+}
+
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
-	logGroupName                  *fasttemplate.Template
+	logGroupName                  *fastTemplate
 	logStreamPrefix               string
-	logStreamName                 *fasttemplate.Template
+	logStreamName                 *fastTemplate
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -174,8 +179,8 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 	}
 
 	return &OutputPlugin{
-		logGroupName:                  logGroupTemplate,
-		logStreamName:                 logStreamTemplate,
+		logGroupName:                  &fastTemplate{Template: logGroupTemplate, String: config.LogGroupName},
+		logStreamName:                 &fastTemplate{Template: logStreamTemplate, String: config.LogStreamName},
 		logStreamPrefix:               config.LogStreamPrefix,
 		logKey:                        config.LogKey,
 		client:                        client,
@@ -411,7 +416,11 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 		logrus.Errorf("[cloudwatch %d] parsing log_group_name template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.group = s.buf.String(); len(e.group) > maxGroupStreamLength {
+	if e.group = s.buf.String(); len(e.group) == 0 {
+		e.group = output.logGroupName.String
+	}
+
+	if len(e.group) > maxGroupStreamLength {
 		e.group = e.group[:maxGroupStreamLength]
 	}
 
@@ -430,7 +439,11 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.stream = s.buf.String(); len(e.stream) > maxGroupStreamLength {
+	if e.stream = s.buf.String(); len(e.stream) == 0 {
+		e.stream = output.logStreamName.String
+	}
+
+	if len(e.stream) > maxGroupStreamLength {
 		e.stream = e.stream[:maxGroupStreamLength]
 	}
 
