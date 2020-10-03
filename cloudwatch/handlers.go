@@ -17,13 +17,13 @@ import "github.com/aws/aws-sdk-go/aws/request"
 
 const logFormatHeader = "x-amzn-logs-format"
 
-// LogFormatHandler returns an http request handler that sets an HTTP header used to 
-// indicate the format of the logs being sent
+// LogFormatHandler returns an http request handler that sets an HTTP header.
+// The header is used to indicate the format of the logs being sent.
 func LogFormatHandler(format string) request.NamedHandler {
 	return request.NamedHandler{
 		Name: "LogFormatHandler",
 		Fn: func(req *request.Request) {
-			req.HTTPRequest.Header.Set("x-amzn-logs-format", format)
+			req.HTTPRequest.Header.Set(logFormatHeader, format)
 		},
 	}
 }

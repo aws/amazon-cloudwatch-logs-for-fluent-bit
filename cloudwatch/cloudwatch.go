@@ -18,7 +18,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
@@ -39,7 +38,9 @@ const (
 	perEventBytes          = 26
 	maximumBytesPerPut     = 1048576
 	maximumLogEventsPerPut = 10000
+	maximumBytesPerEvent   = 1024 * 256 //256KB
 	maximumTimeSpanPerPut  = time.Hour * 24
+	truncatedSuffix        = "[Truncated...]"
 )
 
 const (
@@ -65,7 +66,18 @@ type logStream struct {
 	currentBatchEnd   *time.Time
 	nextSequenceToken *string
 	logStreamName     string
+	logGroupName      string
 	expiration        time.Time
+}
+
+// Event is the input data and contains a log entry.
+// The group and stream are added during processing.
+type Event struct {
+	TS     time.Time
+	Record map[interface{}]interface{}
+	Tag    string
+	group  string
+	stream string
 }
 
 func (stream *logStream) isExpired() bool {
@@ -87,11 +99,13 @@ type OutputPlugin struct {
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
+	groups                        map[string]struct{}
 	timer                         *plugins.Timeout
 	nextLogStreamCleanUpCheckTime time.Time
 	PluginInstanceID              int
-	logGroupCreated               bool
+	logGroupTags                  map[string]*string
 	logGroupRetention             int64
+	autoCreateGroup               bool
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -103,6 +117,7 @@ type OutputPluginConfig struct {
 	LogKey           string
 	RoleARN          string
 	AutoCreateGroup  bool
+	NewLogGroupTags  string
 	LogRetentionDays int64
 	CWEndpoint       string
 	STSEndpoint      string
@@ -129,6 +144,8 @@ func (config OutputPluginConfig) Validate() error {
 
 // NewOutputPlugin creates a OutputPlugin object
 func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
+	logrus.Debugf("[cloudwatch %d] Initializing NewOutputPlugin", config.PluginInstanceID)
+
 	client, err := newCloudWatchLogsClient(config)
 	if err != nil {
 		return nil, err
@@ -153,8 +170,10 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		streams:                       make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
 		PluginInstanceID:              config.PluginInstanceID,
-		logGroupCreated:               !config.AutoCreateGroup,
+		logGroupTags:                  tagKeysToMap(config.NewLogGroupTags),
 		logGroupRetention:             config.LogRetentionDays,
+		autoCreateGroup:               config.AutoCreateGroup,
+		groups:                        make(map[string]struct{}),
 	}, nil
 }
 
@@ -208,40 +227,50 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
 // the return value is one of: FLB_OK, FLB_RETRY
 // API Errors lead to an FLB_RETRY, and all other errors are logged, the record is discarded and FLB_OK is returned
-func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interface{}, timestamp time.Time) int {
-	if !output.logGroupCreated {
-		err := output.createLogGroup()
-		if err != nil {
-			logrus.Error(err)
-			return fluentbit.FLB_ERROR
-		}
-		output.logGroupCreated = true
-	}
-
-	data, err := output.processRecord(record)
+func (output *OutputPlugin) AddEvent(e *Event) int {
+	// Step 1: convert the Event data to strings, and check for a log key.
+	data, err := output.processRecord(e)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// discard this single bad record and let the batch continue
 		return fluentbit.FLB_OK
 	}
 
-	event := logString(data)
-	if len(event) == 0 {
+	// Step 2. Make sure the Event data isn't empty.
+	eventString := logString(data)
+	if len(eventString) == 0 {
 		logrus.Debugf("[cloudwatch %d] Discarding an event from publishing as it is empty\n", output.PluginInstanceID)
 		// discard this single empty record and let the batch continue
 		return fluentbit.FLB_OK
 	}
 
-	stream, err := output.getLogStream(tag)
+	// Step 3. Assign a log group and log stream name to the Event.
+	output.setGroupStreamNames(e)
+
+	// Step 4. Create a missing log group for this Event.
+	if _, ok := output.groups[e.group]; !ok {
+		logrus.Debugf("[cloudwatch %d] Finding log group: %s", output.PluginInstanceID, e.group)
+
+		if err := output.createLogGroup(e); err != nil {
+			logrus.Error(err)
+			return fluentbit.FLB_ERROR
+		}
+
+		output.groups[e.group] = struct{}{}
+	}
+
+	// Step 5. Create or retrieve an existing log stream for this Event.
+	stream, err := output.getLogStream(e)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
 		// an error means that the log stream was not created; this is retryable
 		return fluentbit.FLB_RETRY
 	}
 
+	// Step 6. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
 	countLimit := len(stream.logEvents) == maximumLogEventsPerPut
-	sizeLimit := (stream.currentByteLength + cloudwatchLen(event)) >= maximumBytesPerPut
-	spanLimit := stream.logBatchSpan(timestamp) >= maximumTimeSpanPerPut
+	sizeLimit := (stream.currentByteLength + cloudwatchLen(eventString)) >= maximumBytesPerPut
+	spanLimit := stream.logBatchSpan(e.TS) >= maximumTimeSpanPerPut
 	if countLimit || sizeLimit || spanLimit {
 		err = output.putLogEvents(stream)
 		if err != nil {
@@ -251,16 +280,17 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 		}
 	}
 
+	// Step 7. Add this event to the running tally.
 	stream.logEvents = append(stream.logEvents, &cloudwatchlogs.InputLogEvent{
-		Message:   aws.String(event),
-		Timestamp: aws.Int64(timestamp.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
+		Message:   aws.String(eventString),
+		Timestamp: aws.Int64(e.TS.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
 	})
-	stream.currentByteLength += cloudwatchLen(event)
-	if stream.currentBatchStart == nil || stream.currentBatchStart.After(timestamp) {
-		stream.currentBatchStart = &timestamp
+	stream.currentByteLength += cloudwatchLen(eventString)
+	if stream.currentBatchStart == nil || stream.currentBatchStart.After(e.TS) {
+		stream.currentBatchStart = &e.TS
 	}
-	if stream.currentBatchEnd == nil || stream.currentBatchEnd.Before(timestamp) {
-		stream.currentBatchEnd = &timestamp
+	if stream.currentBatchEnd == nil || stream.currentBatchEnd.Before(e.TS) {
+		stream.currentBatchEnd = &e.TS
 	}
 
 	return fluentbit.FLB_OK
@@ -273,28 +303,28 @@ func (output *OutputPlugin) AddEvent(tag string, record map[interface{}]interfac
 func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	if output.nextLogStreamCleanUpCheckTime.Before(time.Now()) {
 		logrus.Debugf("[cloudwatch %d] Checking for expired log streams", output.PluginInstanceID)
-		for tag, stream := range output.streams {
+
+		for name, stream := range output.streams {
 			if stream.isExpired() {
-				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s; the stream has not been written to for %s", output.PluginInstanceID, stream.logStreamName, logStreamInactivityTimeout.String())
-				delete(output.streams, tag)
+				logrus.Debugf("[cloudwatch %d] Removing internal buffer for log stream %s in group %s; the stream has not been written to for %s",
+					output.PluginInstanceID, stream.logStreamName, stream.logGroupName, logStreamInactivityTimeout.String())
+				delete(output.streams, name)
 			}
 		}
 		output.nextLogStreamCleanUpCheckTime = time.Now().Add(logStreamInactivityCheckInterval)
 	}
 }
 
-func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
-	// find log stream by tag
-	name := output.getStreamName(tag)
-	stream, ok := output.streams[name]
+func (output *OutputPlugin) getLogStream(e *Event) (*logStream, error) {
+	stream, ok := output.streams[e.group+e.stream]
 	if !ok {
 		// stream doesn't exist, create it
-		stream, err := output.createStream(tag)
+		stream, err := output.createStream(e)
 		if err != nil {
 			if awsErr, ok := err.(awserr.Error); ok {
 				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
 					// existing stream
-					return output.existingLogStream(tag)
+					return output.existingLogStream(e)
 				}
 			}
 		}
@@ -304,33 +334,35 @@ func (output *OutputPlugin) getLogStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) existingLogStream(e *Event) (*logStream, error) {
 	var nextToken *string
 	var stream *logStream
-	name := output.getStreamName(tag)
 
 	for stream == nil {
-		resp, err := output.describeLogStreams(name, nextToken)
+		resp, err := output.describeLogStreams(e, nextToken)
 		if err != nil {
 			return nil, err
 		}
 
 		for _, result := range resp.LogStreams {
-			if aws.StringValue(result.LogStreamName) == name {
+			if aws.StringValue(result.LogStreamName) == e.stream {
 				stream = &logStream{
-					logStreamName:     name,
+					logGroupName:      e.group,
+					logStreamName:     e.stream,
 					logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 					nextSequenceToken: result.UploadSequenceToken,
 				}
-				logrus.Debugf("[cloudwatch %d] Initializing internal buffer for exising log stream %s\n", output.PluginInstanceID, name)
-				output.streams[name] = stream
+				output.streams[e.group+e.stream] = stream
+
+				logrus.Debugf("[cloudwatch %d] Initializing internal buffer for exising log stream %s\n", output.PluginInstanceID, e.stream)
 				stream.updateExpiration() // initialize
+
 				break
 			}
 		}
 
 		if stream == nil && resp.NextToken == nil {
-			return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", name)
+			return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", e.stream)
 		}
 
 		nextToken = resp.NextToken
@@ -338,11 +370,11 @@ func (output *OutputPlugin) existingLogStream(tag string) (*logStream, error) {
 	return stream, nil
 }
 
-func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
+func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
 	output.timer.Check()
 	resp, err := output.client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
-		LogGroupName:        aws.String(output.logGroupName),
-		LogStreamNamePrefix: aws.String(name),
+		LogGroupName:        aws.String(e.group),
+		LogStreamNamePrefix: aws.String(e.stream),
 		NextToken:           nextToken,
 	})
 
@@ -355,21 +387,41 @@ func (output *OutputPlugin) describeLogStreams(name string, nextToken *string) (
 	return resp, err
 }
 
-func (output *OutputPlugin) getStreamName(tag string) string {
-	name := output.logStreamName
-	if output.logStreamPrefix != "" {
-		name = output.logStreamPrefix + tag
+// setGroupStreamNames adds the log group and log stream names to the event struct.
+// This happens by parsing (any) template data in either configured name.
+func (output *OutputPlugin) setGroupStreamNames(e *Event) {
+	// This happens here to avoid running Split more than once per log Event.
+	logTagSplit := strings.SplitN(e.Tag, ".", 10)
+
+	var err error
+	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logGroupName, err)
 	}
 
-	return name
+	if e.group == "" {
+		e.group = output.logGroupName
+	}
+
+	if output.logStreamPrefix != "" {
+		e.stream = output.logStreamPrefix + e.Tag
+		return
+	}
+
+	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName); err != nil {
+		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
+		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
+	}
+
+	if e.stream == "" {
+		e.stream = output.logStreamName
+	}
 }
 
-func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
+func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
 	output.timer.Check()
-	name := output.getStreamName(tag)
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
-		LogGroupName:  aws.String(output.logGroupName),
-		LogStreamName: aws.String(name),
+		LogGroupName:  aws.String(e.group),
+		LogStreamName: aws.String(e.stream),
 	})
 
 	if err != nil {
@@ -379,25 +431,30 @@ func (output *OutputPlugin) createStream(tag string) (*logStream, error) {
 	output.timer.Reset()
 
 	stream := &logStream{
-		logStreamName:     name,
+		logStreamName:     e.stream,
+		logGroupName:      e.group,
 		logEvents:         make([]*cloudwatchlogs.InputLogEvent, 0, maximumLogEventsPerPut),
 		nextSequenceToken: nil, // sequence token not required for a new log stream
 	}
-	logrus.Debugf("[cloudwatch %d] Created new log stream %s\n", output.PluginInstanceID, name)
-	output.streams[name] = stream
+	output.streams[e.group+e.stream] = stream
 	stream.updateExpiration() // initialize
-	logrus.Debugf("[cloudwatch %d] Created log stream %s", output.PluginInstanceID, name)
+	logrus.Infof("[cloudwatch %d] Created log stream %s in group %s", output.PluginInstanceID, e.stream, e.group)
 
 	return stream, nil
 }
 
-func (output *OutputPlugin) createLogGroup() error {
+func (output *OutputPlugin) createLogGroup(e *Event) error {
+	if !output.autoCreateGroup {
+		return nil
+	}
+
 	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
-		LogGroupName: aws.String(output.logGroupName),
+		LogGroupName: aws.String(e.group),
+		Tags:         output.logGroupTags,
 	})
 	if err == nil {
-		logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, output.logGroupName)
-		return output.setLogGroupRetention()
+		logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, e.group)
+		return output.setLogGroupRetention(e.group)
 	}
 
 	if awsErr, ok := err.(awserr.Error); !ok ||
@@ -405,24 +462,24 @@ func (output *OutputPlugin) createLogGroup() error {
 		return err
 	}
 
-	logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, output.logGroupName)
+	logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, e.group)
 	return nil
 }
 
-func (output *OutputPlugin) setLogGroupRetention() error {
+func (output *OutputPlugin) setLogGroupRetention(name string) error {
 	if output.logGroupRetention < 1 {
 		return nil
 	}
 
 	_, err := output.client.PutRetentionPolicy(&cloudwatchlogs.PutRetentionPolicyInput{
-		LogGroupName:    aws.String(output.logGroupName),
+		LogGroupName:    aws.String(name),
 		RetentionInDays: aws.Int64(output.logGroupRetention),
 	})
 	if err != nil {
 		return err
 	}
 
-	logrus.Infof("[cloudwatch %d] Set retention policy on log group %s to %dd\n", output.PluginInstanceID, output.logGroupName, output.logGroupRetention)
+	logrus.Infof("[cloudwatch %d] Set retention policy on log group %s to %dd\n", output.PluginInstanceID, name, output.logGroupRetention)
 
 	return nil
 }
@@ -433,11 +490,11 @@ func logString(record []byte) string {
 	return strings.TrimSpace(string(record))
 }
 
-func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([]byte, error) {
+func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	var err error
-	record, err = plugins.DecodeMap(record)
+	e.Record, err = plugins.DecodeMap(e.Record)
 	if err != nil {
-		logrus.Debugf("[cloudwatch %d] Failed to decode record: %v\n", output.PluginInstanceID, record)
+		logrus.Debugf("[cloudwatch %d] Failed to decode record: %v\n", output.PluginInstanceID, e.Record)
 		return nil, err
 	}
 
@@ -445,40 +502,48 @@ func (output *OutputPlugin) processRecord(record map[interface{}]interface{}) ([
 	var data []byte
 
 	if output.logKey != "" {
-		log, err := plugins.LogKey(record, output.logKey)
+		log, err := plugins.LogKey(e.Record, output.logKey)
 		if err != nil {
 			return nil, err
 		}
 
 		data, err = plugins.EncodeLogKey(log)
 	} else {
-		data, err = json.Marshal(record)
+		data, err = json.Marshal(e.Record)
 	}
 
 	if err != nil {
-		logrus.Debugf("[cloudwatch %d] Failed to marshal record: %v\nLog Key: %s\n", output.PluginInstanceID, record, output.logKey)
+		logrus.Debugf("[cloudwatch %d] Failed to marshal record: %v\nLog Key: %s\n", output.PluginInstanceID, e.Record, output.logKey)
 		return nil, err
+	}
+
+	// append newline
+	data = append(data, []byte("\n")...)
+
+	if (len(data) + perEventBytes) > maximumBytesPerEvent {
+		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n", output.PluginInstanceID, len(data)+perEventBytes, output.logGroupName, output.logStreamName)
+		data = data[:(maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)]
+		data = append(data, []byte(truncatedSuffix)...)
 	}
 
 	return data, nil
 }
 
-// Flush sends the current buffer of records (for the stream that corresponds with the given tag)
-func (output *OutputPlugin) Flush(tag string) error {
-	if !output.logGroupCreated {
-		err := output.createLogGroup()
-		if err != nil {
+// Flush sends the current buffer of records.
+func (output *OutputPlugin) Flush() error {
+	logrus.Debugf("[cloudwatch %d] Flush() Called", output.PluginInstanceID)
+
+	for _, stream := range output.streams {
+		if err := output.flushStream(stream); err != nil {
 			return err
 		}
-		output.logGroupCreated = true
 	}
 
+	return nil
+}
+
+func (output *OutputPlugin) flushStream(stream *logStream) error {
 	output.cleanUpExpiredLogStreams() // will periodically clean up, otherwise is no-op
-
-	stream, err := output.getLogStream(tag)
-	if err != nil {
-		return err
-	}
 	return output.putLogEvents(stream)
 }
 
@@ -497,7 +562,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	})
 	response, err := output.client.PutLogEvents(&cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     stream.logEvents,
-		LogGroupName:  aws.String(output.logGroupName),
+		LogGroupName:  aws.String(stream.logGroupName),
 		LogStreamName: aws.String(stream.logStreamName),
 		SequenceToken: stream.nextSequenceToken,
 	})
@@ -529,7 +594,8 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	}
 	output.processRejectedEventsInfo(response)
 	output.timer.Reset()
-	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch\n", output.PluginInstanceID, len(stream.logEvents))
+	logrus.Debugf("[cloudwatch %d] Sent %d events to CloudWatch for stream '%s' in group '%s'",
+		output.PluginInstanceID, len(stream.logEvents), stream.logStreamName, stream.logGroupName)
 
 	stream.nextSequenceToken = response.NextSequenceToken
 	stream.logEvents = stream.logEvents[:0]
@@ -554,21 +620,8 @@ func (output *OutputPlugin) processRejectedEventsInfo(response *cloudwatchlogs.P
 	}
 }
 
-// effectiveLen counts the effective number of bytes in the string, after
-// UTF-8 normalization.  UTF-8 normalization includes replacing bytes that do
-// not constitute valid UTF-8 encoded Unicode codepoints with the Unicode
-// replacement codepoint U+FFFD (a 3-byte UTF-8 sequence, represented in Go as
-// utf8.RuneError)
-func effectiveLen(line string) int {
-	effectiveBytes := 0
-	for _, rune := range line {
-		effectiveBytes += utf8.RuneLen(rune)
-	}
-	return effectiveBytes
-}
-
 func cloudwatchLen(event string) int {
-	return effectiveLen(event) + perEventBytes
+	return len(event) + perEventBytes
 }
 
 func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
