@@ -8,6 +8,11 @@ import (
 	"github.com/valyala/fasttemplate"
 )
 
+// newTemplate is the only place you'll find the template start and end tags.
+func newTemplate(template string) (*fasttemplate.Template, error) {
+	return fasttemplate.NewTemplate(template, "$(", ")")
+}
+
 // tagKeysToMap converts a raw string into a go map.
 // This is used by input data to create AWS tags applied to newly-created log groups.
 //
@@ -69,7 +74,6 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string, sanitize f
 // If a sanitize function is provided, it runs before writing the data.
 func parseDataMapTags(e *Event, logTags []string, t *fasttemplate.Template,
 	sanitize func(b []byte) []byte) (string, error) {
-
 	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
 		v := strings.Index(tag, "[")
 		if v == -1 {
@@ -140,8 +144,4 @@ func sanitizeStream(b []byte) []byte {
 	}
 
 	return b
-}
-
-func newTemplate(template string) (*fasttemplate.Template, error) {
-	return fasttemplate.NewTemplate(template, "$(", ")")
 }
