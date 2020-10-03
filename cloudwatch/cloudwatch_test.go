@@ -42,6 +42,12 @@ const (
 	testSequenceToken   = "sequence-token"
 )
 
+// helper function to make a log stream/log group name template from a string.
+func testTemplate(template string) *fasttemplate.Template {
+	t, _ := newTemplate(template)
+	return t
+}
+
 func TestAddEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
@@ -52,7 +58,7 @@ func TestAddEvent(t *testing.T) {
 	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -78,7 +84,7 @@ func TestTruncateLargeLogEvent(t *testing.T) {
 	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -115,7 +121,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:      fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:      testTemplate(testLogGroup),
 		logStreamPrefix:   testLogStreamPrefix,
 		client:            mockCloudWatch,
 		timer:             setupTimeout(),
@@ -170,7 +176,7 @@ func TestAddEventExistingStream(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -221,7 +227,7 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -243,7 +249,7 @@ func TestAddEventEmptyRecord(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -279,7 +285,7 @@ func TestAddEventAndFlush(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -301,7 +307,7 @@ func TestPutLogEvents(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -328,7 +334,7 @@ func TestSetGroupStreamNames(t *testing.T) {
 	e := &Event{Tag: "syslog.0", Record: record}
 
 	// Test against non-template name.
-	output := OutputPlugin{logStreamName: fasttemplate.New("/aws/ecs/test-stream-name", "$(", ")")}
+	output := OutputPlugin{logStreamName: testTemplate("/aws/ecs/test-stream-name")}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/test-stream-name", e.stream,
 		"The provided stream name must be returned exactly, without modifications.")
@@ -338,12 +344,12 @@ func TestSetGroupStreamNames(t *testing.T) {
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
-	output = OutputPlugin{logStreamName: fasttemplate.New("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)", "$(", ")")}
+	output = OutputPlugin{logStreamName: testTemplate("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)")}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
 	// Test another bad template ] missing.
-	output = OutputPlugin{logStreamName: fasttemplate.New("/aws/ecs/$(details['region')", "$(", ")")}
+	output = OutputPlugin{logStreamName: testTemplate("/aws/ecs/$(details['region')")}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/['region'", e.stream,
 		"The provided stream name must match when parsing fails.")
@@ -359,8 +365,8 @@ func TestSetGroupStreamNames(t *testing.T) {
 
 	e.Record = map[interface{}]interface{}{"ident": ident} // set the long string into our record.
 	output = OutputPlugin{
-		logStreamName: fasttemplate.New("/aws/ecs/$(ident)", "$(", ")"),
-		logGroupName:  fasttemplate.New("/aws/ecs/$(ident)", "$(", ")"),
+		logStreamName: testTemplate("/aws/ecs/$(ident)"),
+		logGroupName:  testTemplate("/aws/ecs/$(ident)"),
 	}
 	output.setGroupStreamNames(e)
 	assert.Equal(t, maxGroupStreamLength, len(e.stream), "the stream name should be truncated to the maximum size")
@@ -387,7 +393,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -427,7 +433,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -543,7 +549,7 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	)
 
 	return OutputPlugin{
-		logGroupName:    fasttemplate.New(testLogGroup, "$(", ")"),
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),

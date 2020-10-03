@@ -148,3 +148,7 @@ func sanitizeStream(b []byte) []byte {
 
 	return b
 }
+
+func newTemplate(template string) (*fasttemplate.Template, error) {
+	return fasttemplate.NewTemplate(template, "$(", ")")
+}

@@ -161,12 +161,12 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		return nil, err
 	}
 
-	logGroupTemplate, err := fasttemplate.NewTemplate(config.LogGroupName, "$(", ")")
+	logGroupTemplate, err := newTemplate(config.LogGroupName)
 	if err != nil {
 		return nil, err
 	}
 
-	logStreamTemplate, err := fasttemplate.NewTemplate(config.LogStreamName, "$(", ")")
+	logStreamTemplate, err := newTemplate(config.LogStreamName)
 	if err != nil {
 		return nil, err
 	}
