@@ -25,8 +25,8 @@ func TestTagKeysToMap(t *testing.T) {
 func TestParseDataMapTags(t *testing.T) {
 	t.Parallel()
 
-	template := "$(missing).$(tag).$(pam['item2']['subitem2']['more']).$(pam['item']).$(pam['item2'])." +
-		"$(pam['item2']['subitem'])-$(pam['item2']['subitem55'])-$(pam['item2']['subitem2']['more'])-$(tag[1])-$(tag[6])"
+	template := testTemplate("$(tag).$(pam['item2']['subitem2']['more']).$(pam['item']).$(pam['item2'])." +
+		"$(pam['item2']['subitem'])-$(pam['item2']['subitem2']['more'])-$(tag[1])")
 	data := map[interface{}]interface{}{
 		"pam": map[interface{}]interface{}{
 			"item": "soup",
@@ -38,10 +38,29 @@ func TestParseDataMapTags(t *testing.T) {
 	s := &sanitizer{buf: bytebufferpool.Get(), sanitize: sanitizeGroup}
 	defer bytebufferpool.Put(s.buf)
 
-	_, err := parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"}, testTemplate(template), s)
+	_, err := parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"}, template, s)
 
-	assert.Nil(t, err)
-	assert.Equal(t, "missing.syslog.0.final.soup..SubIt3m-subitem55-final-0-tag6", s.buf.String(), "Rendered string is incorrect.")
+	assert.Nil(t, err, err)
+	assert.Equal(t, "syslog.0.final.soup..SubIt3m-final-0", s.buf.String(), "Rendered string is incorrect.")
+
+	// Test missing variables. These should always return an error and an empty string.
+	s.buf.Reset()
+	template = testTemplate("$(missing-variable).stuff")
+	_, err = parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"}, template, s)
+	assert.EqualError(t, err, "missing-variable: "+ErrMissingTagName.Error(), "the wrong error was returned")
+	assert.Empty(t, s.buf.String())
+
+	s.buf.Reset()
+	template = testTemplate("$(pam['item6']).stuff")
+	_, err = parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"}, template, s)
+	assert.EqualError(t, err, "item6: "+ErrMissingSubName.Error(), "the wrong error was returned")
+	assert.Empty(t, s.buf.String())
+
+	s.buf.Reset()
+	template = testTemplate("$(tag[9]).stuff")
+	_, err = parseDataMapTags(&Event{Record: data, Tag: "syslog.0"}, []string{"syslog", "0"}, template, s)
+	assert.EqualError(t, err, "tag[9]: "+ErrNoTagValue.Error(), "the wrong error was returned")
+	assert.Empty(t, s.buf.String())
 }
 
 func TestSanitizeGroup(t *testing.T) {

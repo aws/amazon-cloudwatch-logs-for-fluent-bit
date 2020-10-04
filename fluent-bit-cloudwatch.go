@@ -71,11 +71,25 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	config.LogGroupName = output.FLBPluginConfigKey(ctx, "log_group_name")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_group_name = '%s'", pluginID, config.LogGroupName)
 
+	config.DefaultLogGroupName = output.FLBPluginConfigKey(ctx, "default_log_group_name")
+	if config.DefaultLogGroupName == "" {
+		config.DefaultLogGroupName = "fluentbit-default"
+	}
+
+	logrus.Infof("[cloudwatch %d] plugin parameter default_log_group_name = '%s'", pluginID, config.DefaultLogGroupName)
+
 	config.LogStreamPrefix = output.FLBPluginConfigKey(ctx, "log_stream_prefix")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_prefix = '%s'", pluginID, config.LogStreamPrefix)
 
 	config.LogStreamName = output.FLBPluginConfigKey(ctx, "log_stream_name")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_stream_name = '%s'", pluginID, config.LogStreamName)
+
+	config.DefaultLogStreamName = output.FLBPluginConfigKey(ctx, "default_log_stream_name")
+	if config.DefaultLogStreamName == "" {
+		config.DefaultLogStreamName = "/fluentbit-default"
+	}
+
+	logrus.Infof("[cloudwatch %d] plugin parameter default_log_stream_name = '%s'", pluginID, config.DefaultLogStreamName)
 
 	config.Region = output.FLBPluginConfigKey(ctx, "region")
 	logrus.Infof("[cloudwatch %d] plugin parameter region = '%s'", pluginID, config.Region)
