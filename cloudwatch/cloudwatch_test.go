@@ -59,7 +59,7 @@ func TestAddEvent(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -85,7 +85,7 @@ func TestTruncateLargeLogEvent(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -122,7 +122,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:      testTemplate(testLogGroup),
 		logStreamPrefix:   testLogStreamPrefix,
-		client:            mockCloudWatch,
+		Client:            mockCloudWatch,
 		timer:             setupTimeout(),
 		streams:           make(map[string]*logStream),
 		groups:            make(map[string]struct{}),
@@ -177,7 +177,7 @@ func TestAddEventExistingStream(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -228,7 +228,7 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -250,7 +250,7 @@ func TestAddEventEmptyRecord(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logKey:          "somekey",
@@ -286,7 +286,7 @@ func TestAddEventAndFlush(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -308,7 +308,7 @@ func TestPutLogEvents(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		logKey:          "somekey",
@@ -419,7 +419,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -459,7 +459,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	output := OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
@@ -575,7 +575,7 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	return OutputPlugin{
 		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
+		Client:          mockCloudWatch,
 		timer:           setupTimeout(),
 		streams:         make(map[string]*logStream),
 		groups:          map[string]struct{}{testLogGroup: {}},
