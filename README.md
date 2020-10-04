@@ -25,6 +25,8 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 * `region`: The AWS region.
 * `log_group_name`: The name of the CloudWatch Log Group that you want log records sent to. This value allows a template in the form of `$(variable)`. See `log_stream_name` description for more. The app will attempt to create missing log groups, and will throw an error if it does not have access.
 * `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to. This value allows a template in the form of `$(variable)` where
+* `default_log_group_name`: This required variable is the fallback in case any variables in `log_group_name` fails to parse. Defaults to `fluentbit-default`
+* `default_log_stream_name`: This required variable is the fallback in case any variables in `log_stream_name` fails to parse. Defaults to `/fluentbit-default`
 `variable` is a map key name in the log message. To access sub-values in the map
 use the form `$(variable['subkey'])`. Special values: `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9.
 * `log_stream_prefix`: (deprecated) Prefix for the Log Stream name. Setting this to `prefix-` is the same as setting `log_stream_name = prefix-$(tag)`.

@@ -334,28 +334,50 @@ func TestSetGroupStreamNames(t *testing.T) {
 
 	// Test against non-template name.
 	output := OutputPlugin{
-		logStreamName: testTemplate("/aws/ecs/test-stream-name"),
-		logGroupName:  testTemplate(""),
+		logStreamName:        testTemplate("/aws/ecs/test-stream-name"),
+		logGroupName:         testTemplate(""),
+		defaultLogGroupName:  "fluentbit-default",
+		defaultLogStreamName: "/fluentbit-default",
 	}
+
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/test-stream-name", e.stream,
 		"The provided stream name must be returned exactly, without modifications.")
+
+	output.logStreamName = testTemplate("")
+	output.setGroupStreamNames(e)
+	assert.Equal(t, output.defaultLogStreamName, e.stream,
+		"The default stream name must be set when no stream name is provided.")
+
 	// Test against a simple log stream prefix.
 	output.logStreamPrefix = "/aws/ecs/test-stream-prefix/"
 	output.setGroupStreamNames(e)
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
+
 	// Test replacing items from template variables.
 	output.logStreamPrefix = ""
 	output.logStreamName = testTemplate("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)")
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
+	assert.Equal(t, output.defaultLogGroupName, e.group,
+		"The default log group name must be set when no log group is provided.")
+
 	// Test another bad template ] missing.
 	output.logStreamName = testTemplate("/aws/ecs/$(details['region')")
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/['region'", e.stream,
-		"The provided stream name must match when parsing fails.")
+		"The provided stream name must match when the tag is incomplete.")
+
+	// Make sure we get default group and stream names when their variables cannot be parsed.
+	output.logStreamName = testTemplate("/aws/ecs/$(details['activity'])")
+	output.logGroupName = testTemplate("$(details['activity'])")
+	output.setGroupStreamNames(e)
+	assert.Equal(t, output.defaultLogStreamName, e.stream,
+		"The default stream name must return when elements are missing.")
+	assert.Equal(t, output.defaultLogGroupName, e.group,
+		"The default group name must return when elements are missing.")
 
 	// Test that log stream and log group names get truncated to the maximum allowed.
 	b := make([]byte, maxGroupStreamLength*2)

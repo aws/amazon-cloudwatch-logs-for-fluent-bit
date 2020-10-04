@@ -1,6 +1,7 @@
 package cloudwatch
 
 import (
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -9,9 +10,17 @@ import (
 	"github.com/valyala/fasttemplate"
 )
 
+// Errors output by the help procedures.
+var (
+	ErrNoTagValue     = fmt.Errorf("not enough dots in the tag to satisfy the index position")
+	ErrMissingTagName = fmt.Errorf("tag name not found")
+	ErrMissingSubName = fmt.Errorf("sub-tag name not found")
+)
+
 // newTemplate is the only place you'll find the template start and end tags.
 func newTemplate(template string) (*fastTemplate, error) {
 	t, err := fasttemplate.NewTemplate(template, "$(", ")")
+
 	return &fastTemplate{Template: t, String: template}, err
 }
 
@@ -63,7 +72,7 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string, w io.Write
 			data = val // drill down another level.
 			return 0, nil
 		default: // missing
-			return w.Write([]byte(tag))
+			return 0, fmt.Errorf("%s: %w", tag, ErrMissingSubName)
 		}
 	})
 }
@@ -86,8 +95,7 @@ func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, w io.Writer) 
 			case len(tag) >= 5: // input string is at least "tag[x" where x is hopefully an integer 0-9.
 				// The index value is always in the same position: 4:5 (this is why supporting more than 0-9 is rough)
 				if v, _ = strconv.Atoi(tag[4:5]); len(logTags) <= v {
-					// not enough dots the tag to satisfy the index position, so return whatever the input string was.
-					return w.Write([]byte("tag" + tag[4:5]))
+					return 0, fmt.Errorf("%s: %w", tag, ErrNoTagValue)
 				}
 
 				return w.Write([]byte(logTags[v]))
@@ -105,7 +113,7 @@ func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, w io.Writer) 
 			// we should never land here because the interface{} map should have already been converted to strings.
 			return w.Write(val)
 		default: // missing
-			return w.Write([]byte(tag))
+			return 0, fmt.Errorf("%s: %w", tag, ErrMissingTagName)
 		}
 	})
 }
