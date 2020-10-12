@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+* Bug - Add back `auto_create_group` option (#96)
+* Bug - Truncate log events to max size (#85)
+
 ## 1.4.0
 * Feature - Add support for dynamic log group names (#46)
 * Feature - Add support for dynamic log stream names (#16)
