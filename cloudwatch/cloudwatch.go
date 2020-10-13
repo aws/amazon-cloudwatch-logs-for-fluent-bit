@@ -31,6 +31,8 @@ import (
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
+	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasttemplate"
 )
 
 const (
@@ -41,6 +43,7 @@ const (
 	maximumBytesPerEvent   = 1024 * 256 //256KB
 	maximumTimeSpanPerPut  = time.Hour * 24
 	truncatedSuffix        = "[Truncated...]"
+	maxGroupStreamLength   = 512
 )
 
 const (
@@ -91,11 +94,16 @@ func (stream *logStream) updateExpiration() {
 	stream.expiration = time.Now().Add(logStreamInactivityTimeout)
 }
 
+type fastTemplate struct {
+	String string
+	*fasttemplate.Template
+}
+
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
-	logGroupName                  string
+	logGroupName                  *fastTemplate
 	logStreamPrefix               string
-	logStreamName                 string
+	logStreamName                 *fastTemplate
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -106,6 +114,7 @@ type OutputPlugin struct {
 	logGroupTags                  map[string]*string
 	logGroupRetention             int64
 	autoCreateGroup               bool
+	bufferPool                    bytebufferpool.Pool
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -155,15 +164,24 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
 		logrus.Fatalf("[cloudwatch %d] Quitting Fluent Bit", config.PluginInstanceID) // exit the plugin and kill Fluent Bit
 	})
+	if err != nil {
+		return nil, err
+	}
 
+	logGroupTemplate, err := newTemplate(config.LogGroupName)
+	if err != nil {
+		return nil, err
+	}
+
+	logStreamTemplate, err := newTemplate(config.LogStreamName)
 	if err != nil {
 		return nil, err
 	}
 
 	return &OutputPlugin{
-		logGroupName:                  config.LogGroupName,
+		logGroupName:                  logGroupTemplate,
+		logStreamName:                 logStreamTemplate,
 		logStreamPrefix:               config.LogStreamPrefix,
-		logStreamName:                 config.LogStreamName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -392,29 +410,44 @@ func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cl
 func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	// This happens here to avoid running Split more than once per log Event.
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
+	s := &sanitizer{sanitize: sanitizeGroup, buf: output.bufferPool.Get()}
 
-	var err error
-	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logGroupName, err)
+	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing log_group_name template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.group == "" {
-		e.group = output.logGroupName
+	if e.group = s.buf.String(); len(e.group) == 0 {
+		e.group = output.logGroupName.String
 	}
+
+	if len(e.group) > maxGroupStreamLength {
+		e.group = e.group[:maxGroupStreamLength]
+	}
+
+	s.buf.Reset()
 
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
+		output.bufferPool.Put(s.buf)
+
 		return
 	}
 
-	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName); err != nil {
-		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
+	s.sanitize = sanitizeStream
+
+	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, s); err != nil {
+		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template: %v", output.PluginInstanceID, err)
 	}
 
-	if e.stream == "" {
-		e.stream = output.logStreamName
+	if e.stream = s.buf.String(); len(e.stream) == 0 {
+		e.stream = output.logStreamName.String
 	}
+
+	if len(e.stream) > maxGroupStreamLength {
+		e.stream = e.stream[:maxGroupStreamLength]
+	}
+
+	output.bufferPool.Put(s.buf)
 }
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
@@ -521,7 +554,8 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	data = append(data, []byte("\n")...)
 
 	if (len(data) + perEventBytes) > maximumBytesPerEvent {
-		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n", output.PluginInstanceID, len(data)+perEventBytes, output.logGroupName, output.logStreamName)
+		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n",
+			output.PluginInstanceID, len(data)+perEventBytes, e.group, e.stream)
 		data = data[:(maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)]
 		data = append(data, []byte(truncatedSuffix)...)
 	}

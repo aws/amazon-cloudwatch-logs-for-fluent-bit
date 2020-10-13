@@ -10,5 +10,6 @@ require (
 	github.com/json-iterator/go v1.1.10
 	github.com/sirupsen/logrus v1.6.0
 	github.com/stretchr/testify v1.6.1
+	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasttemplate v1.2.1
 )

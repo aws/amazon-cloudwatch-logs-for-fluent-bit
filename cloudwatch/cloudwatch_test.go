@@ -41,6 +41,12 @@ const (
 	testSequenceToken   = "sequence-token"
 )
 
+// helper function to make a log stream/log group name template from a string.
+func testTemplate(template string) *fastTemplate {
+	t, _ := newTemplate(template)
+	return t
+}
+
 func TestAddEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
@@ -51,7 +57,7 @@ func TestAddEvent(t *testing.T) {
 	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -77,7 +83,7 @@ func TestTruncateLargeLogEvent(t *testing.T) {
 	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -114,7 +120,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:      testLogGroup,
+		logGroupName:      testTemplate(testLogGroup),
 		logStreamPrefix:   testLogStreamPrefix,
 		client:            mockCloudWatch,
 		timer:             setupTimeout(),
@@ -169,7 +175,7 @@ func TestAddEventExistingStream(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -220,7 +226,7 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -242,7 +248,7 @@ func TestAddEventEmptyRecord(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -278,7 +284,7 @@ func TestAddEventAndFlush(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -300,7 +306,7 @@ func TestPutLogEvents(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -327,30 +333,50 @@ func TestSetGroupStreamNames(t *testing.T) {
 	e := &Event{Tag: "syslog.0", Record: record}
 
 	// Test against non-template name.
-	output := OutputPlugin{logStreamName: "/aws/ecs/test-stream-name"}
+	output := OutputPlugin{
+		logStreamName: testTemplate("/aws/ecs/test-stream-name"),
+		logGroupName:  testTemplate(""),
+	}
 	output.setGroupStreamNames(e)
-	assert.Equal(t, output.logStreamName, e.stream,
+	assert.Equal(t, "/aws/ecs/test-stream-name", e.stream,
 		"The provided stream name must be returned exactly, without modifications.")
 	// Test against a simple log stream prefix.
-	output = OutputPlugin{logStreamPrefix: "/aws/ecs/test-stream-prefix/"}
+	output.logStreamPrefix = "/aws/ecs/test-stream-prefix/"
 	output.setGroupStreamNames(e)
 	assert.Equal(t, output.logStreamPrefix+"syslog.0", e.stream,
 		"The provided stream prefix must be prefixed to the provided tag name.")
 	// Test replacing items from template variables.
-	output = OutputPlugin{logStreamName: "/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)"}
+	output.logStreamPrefix = ""
+	output.logStreamName = testTemplate("/aws/ecs/$(tag[0])/$(tag[1])/$(details['region'])/$(details['az'])/$(ident)")
 	output.setGroupStreamNames(e)
 	assert.Equal(t, "/aws/ecs/syslog/0/us-west-2/a/cron", e.stream,
 		"The stream name template was not correctly parsed.")
-	// Test bad template } missing. Just prints an error and returns the input value.
-	output = OutputPlugin{logStreamName: "/aws/ecs/$(tag"}
-	output.setGroupStreamNames(e)
-	assert.Equal(t, "/aws/ecs/$(tag", e.stream,
-		"The provided stream name must match when parsing fails.")
 	// Test another bad template ] missing.
-	output = OutputPlugin{logStreamName: "/aws/ecs/$(details['region')"}
+	output.logStreamName = testTemplate("/aws/ecs/$(details['region')")
 	output.setGroupStreamNames(e)
-	assert.Equal(t, "/aws/ecs/$(details['region')", e.stream,
+	assert.Equal(t, "/aws/ecs/['region'", e.stream,
 		"The provided stream name must match when parsing fails.")
+
+	// Test that log stream and log group names get truncated to the maximum allowed.
+	b := make([]byte, maxGroupStreamLength*2)
+	for i := range b { // make a string twice the max
+		b[i] = '_'
+	}
+
+	ident := string(b)
+	assert.True(t, len(ident) > maxGroupStreamLength, "test string creation failed")
+
+	e.Record = map[interface{}]interface{}{"ident": ident} // set the long string into our record.
+	output.logStreamName = testTemplate("/aws/ecs/$(ident)")
+	output.logGroupName = testTemplate("/aws/ecs/$(ident)")
+
+	output.setGroupStreamNames(e)
+	assert.Equal(t, maxGroupStreamLength, len(e.stream), "the stream name should be truncated to the maximum size")
+	assert.Equal(t, maxGroupStreamLength, len(e.group), "the group name should be truncated to the maximum size")
+	assert.Equal(t, "/aws/ecs/"+string(b[:maxGroupStreamLength-len("/aws/ecs/")]),
+		e.stream, "the stream name was incorrectly truncated")
+	assert.Equal(t, "/aws/ecs/"+string(b[:maxGroupStreamLength-len("/aws/ecs/")]),
+		e.group, "the group name was incorrectly truncated")
 }
 
 func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
@@ -369,7 +395,7 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -409,7 +435,7 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),
@@ -525,7 +551,7 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	)
 
 	return OutputPlugin{
-		logGroupName:    testLogGroup,
+		logGroupName:    testTemplate(testLogGroup),
 		logStreamPrefix: testLogStreamPrefix,
 		client:          mockCloudWatch,
 		timer:           setupTimeout(),

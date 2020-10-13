@@ -5,8 +5,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasttemplate"
 )
+
+// newTemplate is the only place you'll find the template start and end tags.
+func newTemplate(template string) (*fastTemplate, error) {
+	t, err := fasttemplate.NewTemplate(template, "$(", ")")
+	return &fastTemplate{Template: t, String: template}, err
+}
 
 // tagKeysToMap converts a raw string into a go map.
 // This is used by input data to create AWS tags applied to newly-created log groups.
@@ -45,13 +52,8 @@ func tagKeysToMap(tags string) map[string]*string {
 // example keys := "['level1']['level2']['level3']"
 // This is called by parseDataMapTags any time a nested value is found in a log Event.
 // This procedure checks if any of the nested values match variable identifiers in the logStream or logGroups.
-func parseKeysTemplate(data map[interface{}]interface{}, keys string) (string, error) {
-	t, err := fasttemplate.NewTemplate(keys, "['", "']")
-	if err != nil {
-		return "", err
-	}
-
-	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
+func parseKeysTemplate(data map[interface{}]interface{}, keys string, w io.Writer) (int64, error) {
+	return fasttemplate.ExecuteFunc(keys, "['", "']", w, func(w io.Writer, tag string) (int, error) {
 		switch val := data[tag].(type) {
 		case []byte:
 			return w.Write(val)
@@ -70,13 +72,8 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string) (string, e
 // from an interface{} map (expected to contain strings or more interface{} maps).
 // This runs once for every log line.
 // Used to fill in any template variables that may exist in the logStream or logGroup names.
-func parseDataMapTags(e *Event, logTags []string, template string) (string, error) {
-	t, err := fasttemplate.NewTemplate(template, "$(", ")")
-	if err != nil {
-		return "", err
-	}
-
-	return t.ExecuteFuncStringWithErr(func(w io.Writer, tag string) (int, error) {
+func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, w io.Writer) (int64, error) {
+	return t.ExecuteFunc(w, func(w io.Writer, tag string) (int, error) {
 		v := strings.Index(tag, "[")
 		if v == -1 {
 			v = len(tag)
@@ -101,12 +98,9 @@ func parseDataMapTags(e *Event, logTags []string, template string) (string, erro
 		case string:
 			return w.Write([]byte(val))
 		case map[interface{}]interface{}:
-			keyVal, err := parseKeysTemplate(val, tag[v:])
-			if err != nil {
-				return 0, err
-			}
+			i, err := parseKeysTemplate(val, tag[v:], w)
 
-			return w.Write([]byte(keyVal))
+			return int(i), err
 		case []byte:
 			// we should never land here because the interface{} map should have already been converted to strings.
 			return w.Write(val)
@@ -114,4 +108,48 @@ func parseDataMapTags(e *Event, logTags []string, template string) (string, erro
 			return w.Write([]byte(tag))
 		}
 	})
+}
+
+// sanitizer implements io.Writer for fasttemplate usage.
+// Instead of just writing bytes to a buffer, sanitize them first.
+type sanitizer struct {
+	sanitize func(b []byte) []byte
+	buf      *bytebufferpool.ByteBuffer
+}
+
+// Write completes the io.Writer implementation.
+func (s *sanitizer) Write(b []byte) (int, error) {
+	return s.buf.Write(s.sanitize(b))
+}
+
+// sanitizeGroup removes special characters from the log group names bytes.
+// https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-logs-loggroup.html
+func sanitizeGroup(b []byte) []byte {
+	for i, r := range b {
+		// 45-47 = / . -
+		// 48-57 = 0-9
+		// 65-90 = A-Z
+		// 95 = _
+		// 97-122 = a-z
+		if r == 95 || (r > 44 && r < 58) ||
+			(r > 64 && r < 91) || (r > 96 && r < 123) {
+			continue
+		}
+
+		b[i] = '.'
+	}
+
+	return b
+}
+
+// sanitizeStream removes : and * from the log stream bytes.
+// https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-logs-logstream.html
+func sanitizeStream(b []byte) []byte {
+	for i, r := range b {
+		if r == '*' || r == ':' {
+			b[i] = '.'
+		}
+	}
+
+	return b
 }
