@@ -81,8 +81,31 @@ func parseKeysTemplate(data map[interface{}]interface{}, keys string, w io.Write
 // from an interface{} map (expected to contain strings or more interface{} maps).
 // This runs once for every log line.
 // Used to fill in any template variables that may exist in the logStream or logGroup names.
-func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, w io.Writer) (int64, error) {
+func parseDataMapTags(e *Event, logTags []string, t *fastTemplate, metadata TaskMetadata, uuid string, w io.Writer) (int64, error) {
 	return t.ExecuteFunc(w, func(w io.Writer, tag string) (int, error) {
+		switch tag {
+		case "ecs_task_id":
+			if metadata.TaskID != "" {
+				return w.Write([]byte(metadata.TaskID))
+			}
+
+			return 0, fmt.Errorf("Failed to fetch ecs_task_id; The container is not running in ECS")
+		case "ecs_cluster":
+			if metadata.Cluster != "" {
+				return w.Write([]byte(metadata.Cluster))
+			}
+
+			return 0, fmt.Errorf("Failed to fetch ecs_cluster; The container is not running in ECS")
+		case "ecs_task_arn":
+			if metadata.TaskARN != "" {
+				return w.Write([]byte(metadata.TaskARN))
+			}
+
+			return 0, fmt.Errorf("Failed to fetch ecs_task_arn; The container is not running in ECS")
+		case "uuid":
+			return w.Write([]byte(uuid))
+		}
+
 		v := strings.Index(tag, "[")
 		if v == -1 {
 			v = len(tag)

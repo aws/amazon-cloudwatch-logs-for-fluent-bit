@@ -14,7 +14,10 @@
 package cloudwatch
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -22,6 +25,7 @@ import (
 
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/endpointcreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
@@ -34,6 +38,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasttemplate"
+	"github.com/segmentio/ksuid"
 )
 
 const (
@@ -84,6 +89,13 @@ type Event struct {
 	stream string
 }
 
+// TaskMetadata it the task metadata from ECS V3 endpoint
+type TaskMetadata struct {
+	Cluster string `json:"Cluster,omitempty"`
+	TaskARN string `json:"TaskARN,omitempty"`
+	TaskID  string `json:"TaskID,omitempty"`
+}
+
 func (stream *logStream) isExpired() bool {
 	if len(stream.logEvents) == 0 && stream.expiration.Before(time.Now()) {
 		return true
@@ -118,6 +130,9 @@ type OutputPlugin struct {
 	logGroupRetention             int64
 	autoCreateGroup               bool
 	bufferPool                    bytebufferpool.Pool
+	ecsMetadata                   TaskMetadata
+	runningInECS                  bool
+	uuid                          string
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -183,6 +198,12 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		return nil, err
 	}
 
+	runningInECS := true
+	// check if it is running in ECS
+	if os.Getenv("ECS_CONTAINER_METADATA_URI") == "" {
+		runningInECS = false
+	}
+
 	return &OutputPlugin{
 		logGroupName:                  logGroupTemplate,
 		logStreamName:                 logStreamTemplate,
@@ -199,6 +220,9 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupRetention:             config.LogRetentionDays,
 		autoCreateGroup:               config.AutoCreateGroup,
 		groups:                        make(map[string]struct{}),
+		ecsMetadata:                   TaskMetadata{},
+		runningInECS:                  runningInECS,
+		uuid:                          ksuid.New().String(),
 	}, nil
 }
 
@@ -295,10 +319,20 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_OK
 	}
 
-	// Step 3. Assign a log group and log stream name to the Event.
+	// Step 3. Extract the Task Metadata if applicable.
+	if output.runningInECS && output.ecsMetadata.TaskID == "" {
+		err := output.getECSMetadata()
+		if err != nil {
+			logrus.Errorf("[cloudwatch %d] Failed to get ECS Task Metadata with error: %v\n", output.PluginInstanceID, err)
+			return fluentbit.FLB_RETRY
+		}
+	}
+	logrus.Debugf("[cloudwatch %d] Get ECS Metadata: %+v\n", output.PluginInstanceID, output.ecsMetadata)
+
+	// Step 4. Assign a log group and log stream name to the Event.
 	output.setGroupStreamNames(e)
 
-	// Step 4. Create a missing log group for this Event.
+	// Step 5. Create a missing log group for this Event.
 	if _, ok := output.groups[e.group]; !ok {
 		logrus.Debugf("[cloudwatch %d] Finding log group: %s", output.PluginInstanceID, e.group)
 
@@ -310,7 +344,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		output.groups[e.group] = struct{}{}
 	}
 
-	// Step 5. Create or retrieve an existing log stream for this Event.
+	// Step 6. Create or retrieve an existing log stream for this Event.
 	stream, err := output.getLogStream(e)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
@@ -318,7 +352,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_RETRY
 	}
 
-	// Step 6. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
+	// Step 7. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
 	countLimit := len(stream.logEvents) == maximumLogEventsPerPut
 	sizeLimit := (stream.currentByteLength + cloudwatchLen(eventString)) >= maximumBytesPerPut
 	spanLimit := stream.logBatchSpan(e.TS) >= maximumTimeSpanPerPut
@@ -331,7 +365,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		}
 	}
 
-	// Step 7. Add this event to the running tally.
+	// Step 8. Add this event to the running tally.
 	stream.logEvents = append(stream.logEvents, &cloudwatchlogs.InputLogEvent{
 		Message:   aws.String(eventString),
 		Timestamp: aws.Int64(e.TS.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
@@ -445,7 +479,7 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
 	s := &sanitizer{sanitize: sanitizeGroup, buf: output.bufferPool.Get()}
 
-	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
+	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, output.ecsMetadata, output.uuid, s); err != nil {
 		e.group = output.defaultLogGroupName
 		logrus.Errorf("[cloudwatch %d] parsing log_group_name template '%s' "+
 			"(using value of default_log_group_name instead): %v",
@@ -466,7 +500,7 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	s.sanitize = sanitizeStream
 	s.buf.Reset()
 
-	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, s); err != nil {
+	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, output.ecsMetadata, output.uuid, s); err != nil {
 		e.stream = output.defaultLogStreamName
 		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template '%s': %v",
 			output.PluginInstanceID, output.logStreamName.String, err)
@@ -590,6 +624,36 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func (output *OutputPlugin) getECSMetadata() error {
+	ecsTaskMetadataEndpointV3 := os.Getenv("ECS_CONTAINER_METADATA_URI")
+	var metadata TaskMetadata
+	res, err := http.Get(fmt.Sprintf("%s/task", ecsTaskMetadataEndpointV3))
+	if err != nil {
+		return fmt.Errorf("Failed to get endpoint response: %w", err)
+	}
+	response, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("Failed to read response '%v' from URL: %w", res, err)
+	}
+	res.Body.Close()
+
+	err = json.Unmarshal(response, &metadata)
+	if err != nil {
+		return fmt.Errorf("Failed to unmarshal ECS metadata '%+v': %w", metadata, err)
+	}
+
+	arnInfo, err := arn.Parse(metadata.TaskARN)
+	if err != nil {
+		return fmt.Errorf("Failed to parse ECS TaskARN '%s': %w", metadata.TaskARN, err)
+	}
+	resourceID := strings.Split(arnInfo.Resource, "/")
+	taskID := resourceID[len(resourceID)-1]
+	metadata.TaskID = taskID
+	
+	output.ecsMetadata = metadata
+	return nil
 }
 
 // Flush sends the current buffer of records.
