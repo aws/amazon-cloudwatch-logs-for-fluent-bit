@@ -650,17 +650,17 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 				logrus.Errorf("[cloudwatch %d] Encountered error %v; detailed information: %s\n", output.PluginInstanceID, awsErr, awsErr.Message())
 				if strings.Contains(awsErr.Message(), "group") {
 					if err := output.createLogGroup(&Event{group: stream.logGroupName}); err != nil {
-						logrus.Error(err)
+						logrus.Errorf("[cloudwatch %d] Encountered error %v\n", output.PluginInstanceID, err)
 						return err
 					}
 				} else if strings.Contains(awsErr.Message(), "stream") {
 					if _, err := output.createStream(&Event{group: stream.logGroupName, stream: stream.logStreamName}); err != nil {
-						logrus.Error(err)
+						logrus.Errorf("[cloudwatch %d] Encountered error %v\n", output.PluginInstanceID, err)
 						return err
 					}
 				}
 
-				return fmt.Errorf("[cloudwatch %d] A Log group/stream did not exist, re-created it. Will retry PutLogEvents on next flush", output.PluginInstanceID)
+				return fmt.Errorf("A Log group/stream did not exist, re-created it. Will retry PutLogEvents on next flush")
 			} else {
 				output.timer.Start()
 				return err
