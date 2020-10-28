@@ -447,7 +447,8 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 
 	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
 		e.group = output.defaultLogGroupName
-		logrus.Errorf("[cloudwatch %d] parsing log_group_name template '%s': %v",
+		logrus.Errorf("[cloudwatch %d] parsing log_group_name template '%s' "+
+			"(using value of default_log_group_name instead): %v",
 			output.PluginInstanceID, output.logGroupName.String, err)
 	} else if e.group = s.buf.String(); len(e.group) == 0 {
 		e.group = output.defaultLogGroupName
