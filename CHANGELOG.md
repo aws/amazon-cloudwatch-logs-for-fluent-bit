@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.0
+* Feature - Automatically re-create CloudWatch log groups and log streams if they are deleted (#95)
+* Feature - Add default fallback log group and stream names (#99)
+* Feature - Add support for ECS Metadata and UUID via special variables in log stream and group names (#108)
+* Enhancement - Remove invalid characters in log stream and log group names (#103)
+
 ## 1.4.1
 * Bug - Add back `auto_create_group` option (#96)
 * Bug - Truncate log events to max size (#85)
