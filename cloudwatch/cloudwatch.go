@@ -103,8 +103,10 @@ type fastTemplate struct {
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
 	logGroupName                  *fastTemplate
+	defaultLogGroupName           string
 	logStreamPrefix               string
 	logStreamName                 *fastTemplate
+	defaultLogStreamName          string
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -120,20 +122,22 @@ type OutputPlugin struct {
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
 type OutputPluginConfig struct {
-	Region           string
-	LogGroupName     string
-	LogStreamPrefix  string
-	LogStreamName    string
-	LogKey           string
-	RoleARN          string
-	AutoCreateGroup  bool
-	NewLogGroupTags  string
-	LogRetentionDays int64
-	CWEndpoint       string
-	STSEndpoint      string
-	CredsEndpoint    string
-	PluginInstanceID int
-	LogFormat        string
+	Region               string
+	LogGroupName         string
+	DefaultLogGroupName  string
+	LogStreamPrefix      string
+	LogStreamName        string
+	DefaultLogStreamName string
+	LogKey               string
+	RoleARN              string
+	AutoCreateGroup      bool
+	NewLogGroupTags      string
+	LogRetentionDays     int64
+	CWEndpoint           string
+	STSEndpoint          string
+	CredsEndpoint        string
+	PluginInstanceID     int
+	LogFormat            string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -183,6 +187,8 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupName:                  logGroupTemplate,
 		logStreamName:                 logStreamTemplate,
 		logStreamPrefix:               config.LogStreamPrefix,
+		defaultLogGroupName:           config.DefaultLogGroupName,
+		defaultLogStreamName:          config.DefaultLogStreamName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -440,18 +446,15 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	s := &sanitizer{sanitize: sanitizeGroup, buf: output.bufferPool.Get()}
 
 	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, s); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing log_group_name template: %v", output.PluginInstanceID, err)
-	}
-
-	if e.group = s.buf.String(); len(e.group) == 0 {
-		e.group = output.logGroupName.String
-	}
-
-	if len(e.group) > maxGroupStreamLength {
+		e.group = output.defaultLogGroupName
+		logrus.Errorf("[cloudwatch %d] parsing log_group_name template '%s' "+
+			"(using value of default_log_group_name instead): %v",
+			output.PluginInstanceID, output.logGroupName.String, err)
+	} else if e.group = s.buf.String(); len(e.group) == 0 {
+		e.group = output.defaultLogGroupName
+	} else if len(e.group) > maxGroupStreamLength {
 		e.group = e.group[:maxGroupStreamLength]
 	}
-
-	s.buf.Reset()
 
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
@@ -461,16 +464,15 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	}
 
 	s.sanitize = sanitizeStream
+	s.buf.Reset()
 
 	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, s); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template: %v", output.PluginInstanceID, err)
-	}
-
-	if e.stream = s.buf.String(); len(e.stream) == 0 {
-		e.stream = output.logStreamName.String
-	}
-
-	if len(e.stream) > maxGroupStreamLength {
+		e.stream = output.defaultLogStreamName
+		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template '%s': %v",
+			output.PluginInstanceID, output.logStreamName.String, err)
+	} else if e.stream = s.buf.String(); len(e.stream) == 0 {
+		e.stream = output.defaultLogStreamName
+	} else if len(e.stream) > maxGroupStreamLength {
 		e.stream = e.stream[:maxGroupStreamLength]
 	}
 
