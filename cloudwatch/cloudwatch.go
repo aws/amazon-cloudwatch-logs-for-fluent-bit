@@ -14,13 +14,18 @@
 package cloudwatch
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/arn"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials/endpointcreds"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
@@ -31,6 +36,9 @@ import (
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/sirupsen/logrus"
+	"github.com/valyala/bytebufferpool"
+	"github.com/valyala/fasttemplate"
+	"github.com/segmentio/ksuid"
 )
 
 const (
@@ -41,6 +49,7 @@ const (
 	maximumBytesPerEvent   = 1024 * 256 //256KB
 	maximumTimeSpanPerPut  = time.Hour * 24
 	truncatedSuffix        = "[Truncated...]"
+	maxGroupStreamLength   = 512
 )
 
 const (
@@ -80,6 +89,13 @@ type Event struct {
 	stream string
 }
 
+// TaskMetadata it the task metadata from ECS V3 endpoint
+type TaskMetadata struct {
+	Cluster string `json:"Cluster,omitempty"`
+	TaskARN string `json:"TaskARN,omitempty"`
+	TaskID  string `json:"TaskID,omitempty"`
+}
+
 func (stream *logStream) isExpired() bool {
 	if len(stream.logEvents) == 0 && stream.expiration.Before(time.Now()) {
 		return true
@@ -91,11 +107,18 @@ func (stream *logStream) updateExpiration() {
 	stream.expiration = time.Now().Add(logStreamInactivityTimeout)
 }
 
+type fastTemplate struct {
+	String string
+	*fasttemplate.Template
+}
+
 // OutputPlugin is the CloudWatch Logs Fluent Bit output plugin
 type OutputPlugin struct {
-	logGroupName                  string
+	logGroupName                  *fastTemplate
+	defaultLogGroupName           string
 	logStreamPrefix               string
-	logStreamName                 string
+	logStreamName                 *fastTemplate
+	defaultLogStreamName          string
 	logKey                        string
 	client                        LogsClient
 	streams                       map[string]*logStream
@@ -106,24 +129,30 @@ type OutputPlugin struct {
 	logGroupTags                  map[string]*string
 	logGroupRetention             int64
 	autoCreateGroup               bool
+	bufferPool                    bytebufferpool.Pool
+	ecsMetadata                   TaskMetadata
+	runningInECS                  bool
+	uuid                          string
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
 type OutputPluginConfig struct {
-	Region           string
-	LogGroupName     string
-	LogStreamPrefix  string
-	LogStreamName    string
-	LogKey           string
-	RoleARN          string
-	AutoCreateGroup  bool
-	NewLogGroupTags  string
-	LogRetentionDays int64
-	CWEndpoint       string
-	STSEndpoint      string
-	CredsEndpoint    string
-	PluginInstanceID int
-	LogFormat        string
+	Region               string
+	LogGroupName         string
+	DefaultLogGroupName  string
+	LogStreamPrefix      string
+	LogStreamName        string
+	DefaultLogStreamName string
+	LogKey               string
+	RoleARN              string
+	AutoCreateGroup      bool
+	NewLogGroupTags      string
+	LogRetentionDays     int64
+	CWEndpoint           string
+	STSEndpoint          string
+	CredsEndpoint        string
+	PluginInstanceID     int
+	LogFormat            string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -155,15 +184,32 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logrus.Errorf("[cloudwatch %d] timeout threshold reached: Failed to send logs for %s\n", config.PluginInstanceID, d.String())
 		logrus.Fatalf("[cloudwatch %d] Quitting Fluent Bit", config.PluginInstanceID) // exit the plugin and kill Fluent Bit
 	})
-
 	if err != nil {
 		return nil, err
 	}
 
+	logGroupTemplate, err := newTemplate(config.LogGroupName)
+	if err != nil {
+		return nil, err
+	}
+
+	logStreamTemplate, err := newTemplate(config.LogStreamName)
+	if err != nil {
+		return nil, err
+	}
+
+	runningInECS := true
+	// check if it is running in ECS
+	if os.Getenv("ECS_CONTAINER_METADATA_URI") == "" {
+		runningInECS = false
+	}
+
 	return &OutputPlugin{
-		logGroupName:                  config.LogGroupName,
+		logGroupName:                  logGroupTemplate,
+		logStreamName:                 logStreamTemplate,
 		logStreamPrefix:               config.LogStreamPrefix,
-		logStreamName:                 config.LogStreamName,
+		defaultLogGroupName:           config.DefaultLogGroupName,
+		defaultLogStreamName:          config.DefaultLogStreamName,
 		logKey:                        config.LogKey,
 		client:                        client,
 		timer:                         timer,
@@ -174,6 +220,9 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupRetention:             config.LogRetentionDays,
 		autoCreateGroup:               config.AutoCreateGroup,
 		groups:                        make(map[string]struct{}),
+		ecsMetadata:                   TaskMetadata{},
+		runningInECS:                  runningInECS,
+		uuid:                          ksuid.New().String(),
 	}, nil
 }
 
@@ -191,32 +240,58 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 		return endpoints.DefaultResolver().EndpointFor(service, region, optFns...)
 	}
 
-	svcConfig := &aws.Config{
+	// Fetch base credentials
+	baseConfig := &aws.Config{
 		Region:                        aws.String(config.Region),
 		EndpointResolver:              endpoints.ResolverFunc(customResolverFn),
 		CredentialsChainVerboseErrors: aws.Bool(true),
 	}
 
 	if config.CredsEndpoint != "" {
-		creds := endpointcreds.NewCredentialsClient(*svcConfig, request.Handlers{}, config.CredsEndpoint,
+		creds := endpointcreds.NewCredentialsClient(*baseConfig, request.Handlers{}, config.CredsEndpoint,
 			func(provider *endpointcreds.Provider) {
 				provider.ExpiryWindow = 5 * time.Minute
 			})
-		svcConfig.Credentials = creds
+		baseConfig.Credentials = creds
 	}
 
-	sess, err := session.NewSession(svcConfig)
+	sess, err := session.NewSession(baseConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	stsConfig := &aws.Config{}
-	if config.RoleARN != "" {
-		creds := stscreds.NewCredentials(sess, config.RoleARN)
-		stsConfig.Credentials = creds
+	var svcSess = sess
+	var svcConfig = baseConfig
+	eksRole := os.Getenv("EKS_POD_EXECUTION_ROLE")
+	if eksRole != "" {
+		logrus.Debugf("[cloudwatch %d] Fetching EKS pod credentials.\n", config.PluginInstanceID)
+		eksConfig := &aws.Config{}
+		creds := stscreds.NewCredentials(svcSess, eksRole)
+		eksConfig.Credentials = creds
+		eksConfig.Region = aws.String(config.Region)
+		svcConfig = eksConfig
+
+		svcSess, err = session.NewSession(svcConfig)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	client := cloudwatchlogs.New(sess, stsConfig)
+	if config.RoleARN != "" {
+		logrus.Debugf("[cloudwatch %d] Fetching credentials for %s\n", config.PluginInstanceID, config.RoleARN)
+		stsConfig := &aws.Config{}
+		creds := stscreds.NewCredentials(svcSess, config.RoleARN)
+		stsConfig.Credentials = creds
+		stsConfig.Region = aws.String(config.Region)
+		svcConfig = stsConfig
+
+		svcSess, err = session.NewSession(svcConfig)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	client := cloudwatchlogs.New(svcSess, svcConfig)
 	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
 	if config.LogFormat != "" {
 		client.Handlers.Build.PushBackNamed(LogFormatHandler(config.LogFormat))
@@ -244,10 +319,20 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_OK
 	}
 
-	// Step 3. Assign a log group and log stream name to the Event.
+	// Step 3. Extract the Task Metadata if applicable.
+	if output.runningInECS && output.ecsMetadata.TaskID == "" {
+		err := output.getECSMetadata()
+		if err != nil {
+			logrus.Errorf("[cloudwatch %d] Failed to get ECS Task Metadata with error: %v\n", output.PluginInstanceID, err)
+			return fluentbit.FLB_RETRY
+		}
+	}
+	logrus.Debugf("[cloudwatch %d] Get ECS Metadata: %+v\n", output.PluginInstanceID, output.ecsMetadata)
+
+	// Step 4. Assign a log group and log stream name to the Event.
 	output.setGroupStreamNames(e)
 
-	// Step 4. Create a missing log group for this Event.
+	// Step 5. Create a missing log group for this Event.
 	if _, ok := output.groups[e.group]; !ok {
 		logrus.Debugf("[cloudwatch %d] Finding log group: %s", output.PluginInstanceID, e.group)
 
@@ -259,7 +344,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		output.groups[e.group] = struct{}{}
 	}
 
-	// Step 5. Create or retrieve an existing log stream for this Event.
+	// Step 6. Create or retrieve an existing log stream for this Event.
 	stream, err := output.getLogStream(e)
 	if err != nil {
 		logrus.Errorf("[cloudwatch %d] %v\n", output.PluginInstanceID, err)
@@ -267,7 +352,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		return fluentbit.FLB_RETRY
 	}
 
-	// Step 6. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
+	// Step 7. Check batch limits and flush buffer if any of these limits will be exeeded by this log Entry.
 	countLimit := len(stream.logEvents) == maximumLogEventsPerPut
 	sizeLimit := (stream.currentByteLength + cloudwatchLen(eventString)) >= maximumBytesPerPut
 	spanLimit := stream.logBatchSpan(e.TS) >= maximumTimeSpanPerPut
@@ -280,7 +365,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 		}
 	}
 
-	// Step 7. Add this event to the running tally.
+	// Step 8. Add this event to the running tally.
 	stream.logEvents = append(stream.logEvents, &cloudwatchlogs.InputLogEvent{
 		Message:   aws.String(eventString),
 		Timestamp: aws.Int64(e.TS.UnixNano() / 1e6), // CloudWatch uses milliseconds since epoch
@@ -392,29 +477,40 @@ func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cl
 func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 	// This happens here to avoid running Split more than once per log Event.
 	logTagSplit := strings.SplitN(e.Tag, ".", 10)
+	s := &sanitizer{sanitize: sanitizeGroup, buf: output.bufferPool.Get()}
 
-	var err error
-	if e.group, err = parseDataMapTags(e, logTagSplit, output.logGroupName); err != nil {
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logGroupName, err)
-	}
-
-	if e.group == "" {
-		e.group = output.logGroupName
+	if _, err := parseDataMapTags(e, logTagSplit, output.logGroupName, output.ecsMetadata, output.uuid, s); err != nil {
+		e.group = output.defaultLogGroupName
+		logrus.Errorf("[cloudwatch %d] parsing log_group_name template '%s' "+
+			"(using value of default_log_group_name instead): %v",
+			output.PluginInstanceID, output.logGroupName.String, err)
+	} else if e.group = s.buf.String(); len(e.group) == 0 {
+		e.group = output.defaultLogGroupName
+	} else if len(e.group) > maxGroupStreamLength {
+		e.group = e.group[:maxGroupStreamLength]
 	}
 
 	if output.logStreamPrefix != "" {
 		e.stream = output.logStreamPrefix + e.Tag
+		output.bufferPool.Put(s.buf)
+
 		return
 	}
 
-	if e.stream, err = parseDataMapTags(e, logTagSplit, output.logStreamName); err != nil {
-		// If a user gets this error, they need to fix their log_stream_name template to make it go away. Simple.
-		logrus.Errorf("[cloudwatch %d] parsing template: '%s': %v", output.PluginInstanceID, output.logStreamName, err)
+	s.sanitize = sanitizeStream
+	s.buf.Reset()
+
+	if _, err := parseDataMapTags(e, logTagSplit, output.logStreamName, output.ecsMetadata, output.uuid, s); err != nil {
+		e.stream = output.defaultLogStreamName
+		logrus.Errorf("[cloudwatch %d] parsing log_stream_name template '%s': %v",
+			output.PluginInstanceID, output.logStreamName.String, err)
+	} else if e.stream = s.buf.String(); len(e.stream) == 0 {
+		e.stream = output.defaultLogStreamName
+	} else if len(e.stream) > maxGroupStreamLength {
+		e.stream = e.stream[:maxGroupStreamLength]
 	}
 
-	if e.stream == "" {
-		e.stream = output.logStreamName
-	}
+	output.bufferPool.Put(s.buf)
 }
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
@@ -521,12 +617,43 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	data = append(data, []byte("\n")...)
 
 	if (len(data) + perEventBytes) > maximumBytesPerEvent {
-		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n", output.PluginInstanceID, len(data)+perEventBytes, output.logGroupName, output.logStreamName)
+		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n",
+			output.PluginInstanceID, len(data)+perEventBytes, e.group, e.stream)
 		data = data[:(maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)]
 		data = append(data, []byte(truncatedSuffix)...)
 	}
 
 	return data, nil
+}
+
+func (output *OutputPlugin) getECSMetadata() error {
+	ecsTaskMetadataEndpointV3 := os.Getenv("ECS_CONTAINER_METADATA_URI")
+	var metadata TaskMetadata
+	res, err := http.Get(fmt.Sprintf("%s/task", ecsTaskMetadataEndpointV3))
+	if err != nil {
+		return fmt.Errorf("Failed to get endpoint response: %w", err)
+	}
+	response, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("Failed to read response '%v' from URL: %w", res, err)
+	}
+	res.Body.Close()
+
+	err = json.Unmarshal(response, &metadata)
+	if err != nil {
+		return fmt.Errorf("Failed to unmarshal ECS metadata '%+v': %w", metadata, err)
+	}
+
+	arnInfo, err := arn.Parse(metadata.TaskARN)
+	if err != nil {
+		return fmt.Errorf("Failed to parse ECS TaskARN '%s': %w", metadata.TaskARN, err)
+	}
+	resourceID := strings.Split(arnInfo.Resource, "/")
+	taskID := resourceID[len(resourceID)-1]
+	metadata.TaskID = taskID
+	
+	output.ecsMetadata = metadata
+	return nil
 }
 
 // Flush sends the current buffer of records.
@@ -584,6 +711,22 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 				stream.nextSequenceToken = &parts[len(parts)-1]
 
 				return output.putLogEvents(stream)
+			} else if awsErr.Code() == cloudwatchlogs.ErrCodeResourceNotFoundException {
+				// a log group or a log stream should be re-created after it is deleted and then retry
+				logrus.Errorf("[cloudwatch %d] Encountered error %v; detailed information: %s\n", output.PluginInstanceID, awsErr, awsErr.Message())
+				if strings.Contains(awsErr.Message(), "group") {
+					if err := output.createLogGroup(&Event{group: stream.logGroupName}); err != nil {
+						logrus.Errorf("[cloudwatch %d] Encountered error %v\n", output.PluginInstanceID, err)
+						return err
+					}
+				} else if strings.Contains(awsErr.Message(), "stream") {
+					if _, err := output.createStream(&Event{group: stream.logGroupName, stream: stream.logStreamName}); err != nil {
+						logrus.Errorf("[cloudwatch %d] Encountered error %v\n", output.PluginInstanceID, err)
+						return err
+					}
+				}
+
+				return fmt.Errorf("A Log group/stream did not exist, re-created it. Will retry PutLogEvents on next flush")
 			} else {
 				output.timer.Start()
 				return err

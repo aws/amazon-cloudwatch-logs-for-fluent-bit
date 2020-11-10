@@ -23,10 +23,10 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 ### Plugin Options
 
 * `region`: The AWS region.
-* `log_group_name`: The name of the CloudWatch Log Group that you want log records sent to. This value allows a template in the form of `$(variable)`. See `log_stream_name` description for more. The app will attempt to create missing log groups, and will throw an error if it does not have access.
-* `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to. This value allows a template in the form of `$(variable)` where
-`variable` is a map key name in the log message. To access sub-values in the map
-use the form `$(variable['subkey'])`. Special values: `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9.
+* `log_group_name`: The name of the CloudWatch Log Group that you want log records sent to. This value allows a template in the form of `$(variable)`. See section [Templating Log Group and Stream Names](#templating-log-group-and-stream-names) for more. Fluent Bit will create missing log groups if `auto_create_group` is set, and will throw an error if it does not have permission.
+* `log_stream_name`: The name of the CloudWatch Log Stream that you want log records sent to. This value allows a template in the form of `$(variable)`. See section [Templating Log Group and Stream Names](#templating-log-group-and-stream-names) for more.
+* `default_log_group_name`: This required variable is the fallback in case any variables in `log_group_name` fails to parse. Defaults to `fluentbit-default`.
+* `default_log_stream_name`: This required variable is the fallback in case any variables in `log_stream_name` fails to parse. Defaults to `/fluentbit-default`.
 * `log_stream_prefix`: (deprecated) Prefix for the Log Stream name. Setting this to `prefix-` is the same as setting `log_stream_name = prefix-$(tag)`.
 * `log_key`: By default, the whole log record will be sent to CloudWatch. If you specify a key name with this option, then only the value of that key will be sent to CloudWatch. For example, if you are using the Fluentd Docker log driver, you can specify `log_key log` and only the log message will be sent to CloudWatch.
 * `log_format`: An optional parameter that can be used to tell CloudWatch the format of the data. A value of `json/emf` enables CloudWatch to extract custom metrics embedded in a JSON payload. See the [Embedded Metric Format](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html).
@@ -65,6 +65,39 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
 
 * `FLB_LOG_LEVEL`: Set the log level for the plugin. Valid values are: `debug`, `info`, and `error` (case insensitive). Default is `info`. **Note**: Setting log level in the Fluent Bit Configuration file using the Service key will not affect the plugin log level (because the plugin is external).
 * `SEND_FAILURE_TIMEOUT`: Allows you to configure a timeout if the plugin can not send logs to CloudWatch. The timeout is specified as a [Golang duration](https://golang.org/pkg/time/#ParseDuration), for example: `5m30s`. If the plugin has failed to make any progress for the given period of time, then it will exit and kill Fluent Bit. This is useful in scenarios where you want your logging solution to fail fast if it has been misconfigured (i.e. network or credentials have not been set up to allow it to send to CloudWatch).
+
+### Templating Log Group and Stream Names
+
+ A template in the form of `$(variable)` can be set in `log_group_name` or `log_stream_name`. `variable` can be a map key name in the log message. To access sub-values in the map use the form `$(variable['subkey'])`. Also, it can be replaced with special values to insert the tag, ECS metadata or a random string in the name.
+
+ Special Values:
+ *  `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9. 
+ *  `$(uuid)` will insert a random string in the names. The random string is generated automatically with format: 4 bytes of time (seconds) + 16 random bytes. It is created when the plugin starts up and uniquely identifies the output - which means that until Fluent Bit is restarted, it will be the same. If you have multiple CloudWatch outputs, each one will get a unique UUID.
+ * If your container is running in ECS, `$(variable)` can be set as `$(ecs_task_id)`, `$(ecs_cluster)` or `$(ecs_task_arn)`. It will set ECS metadata into `log_group_name` or `log_stream_name`. 
+
+ Here is an example for `fluent-bit.conf`:
+
+```
+[INPUT]
+    Name        dummy
+    Tag         dummy.data
+    Dummy {"pam": {"item": "soup", "item2":{"subitem": "rice"}}}
+
+[OUTPUT]
+    Name cloudwatch
+    Match   *
+    region us-east-1
+    log_group_name fluent-bit-cloudwatch-$(uuid)-$(tag)
+    log_stream_name from-fluent-bit-$(pam['item2']['subitem'])-$(ecs_task_id)-$(ecs_cluster)
+    auto_create_group true
+```
+
+And here is the resulting log stream name and log group name:
+
+```
+log_group_name fluent-bit-cloudwatch-1jD7P6bbSRtbc9stkWjJZYerO6s-dummy.data
+log_stream_name from-fluent-bit-rice-37e873f6-37b4-42a7-af47-eac7275c6152-ecs-local-cluster
+```
 
 ### Fluent Bit Versions
 
