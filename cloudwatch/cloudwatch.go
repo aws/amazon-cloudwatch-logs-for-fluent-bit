@@ -19,6 +19,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -35,10 +36,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	fluentbit "github.com/fluent/fluent-bit-go/output"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fasttemplate"
-	"github.com/segmentio/ksuid"
 )
 
 const (
@@ -133,6 +134,7 @@ type OutputPlugin struct {
 	ecsMetadata                   TaskMetadata
 	runningInECS                  bool
 	uuid                          string
+	extraUserAgent                string
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -153,6 +155,7 @@ type OutputPluginConfig struct {
 	CredsEndpoint        string
 	PluginInstanceID     int
 	LogFormat            string
+	ExtraUserAgent       string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -223,6 +226,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		ecsMetadata:                   TaskMetadata{},
 		runningInECS:                  runningInECS,
 		uuid:                          ksuid.New().String(),
+		extraUserAgent:                config.ExtraUserAgent,
 	}, nil
 }
 
@@ -292,11 +296,30 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 	}
 
 	client := cloudwatchlogs.New(svcSess, svcConfig)
-	client.Handlers.Build.PushBackNamed(plugins.CustomUserAgentHandler())
+	client.Handlers.Build.PushBackNamed(customUserAgentHandler(config))
 	if config.LogFormat != "" {
 		client.Handlers.Build.PushBackNamed(LogFormatHandler(config.LogFormat))
 	}
 	return client, nil
+}
+
+// CustomUserAgentHandler returns a http request handler that sets a custom user agent to all aws requests
+func customUserAgentHandler(config OutputPluginConfig) request.NamedHandler {
+	const userAgentHeader = "User-Agent"
+
+	return request.NamedHandler{
+		Name: "ECSLocalEndpointsAgentHandler",
+		Fn: func(r *request.Request) {
+			currentAgent := r.HTTPRequest.Header.Get(userAgentHeader)
+			if config.ExtraUserAgent != "" {
+				r.HTTPRequest.Header.Set(userAgentHeader,
+					fmt.Sprintf("aws-fluent-bit-plugin-%s (%s) %s", config.ExtraUserAgent, runtime.GOOS, currentAgent))
+			} else {
+				r.HTTPRequest.Header.Set(userAgentHeader,
+					fmt.Sprintf("aws-fluent-bit-plugin (%s) %s", runtime.GOOS, currentAgent))
+			}
+		},
+	}
 }
 
 // AddEvent accepts a record and adds it to the buffer for its stream, flushing the buffer if it is full
@@ -651,7 +674,7 @@ func (output *OutputPlugin) getECSMetadata() error {
 	resourceID := strings.Split(arnInfo.Resource, "/")
 	taskID := resourceID[len(resourceID)-1]
 	metadata.TaskID = taskID
-	
+
 	output.ecsMetadata = metadata
 	return nil
 }
