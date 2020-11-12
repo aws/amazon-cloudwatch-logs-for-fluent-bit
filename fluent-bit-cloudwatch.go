@@ -121,6 +121,8 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	config.LogFormat = output.FLBPluginConfigKey(ctx, "log_format")
 	logrus.Infof("[cloudwatch %d] plugin parameter log_format = '%s'", pluginID, config.LogFormat)
 
+	config.ExtraUserAgent = output.FLBPluginConfigKey(ctx, "extra_user_agent")
+
 	return config
 }
 
