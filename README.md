@@ -71,9 +71,9 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
  A template in the form of `$(variable)` can be set in `log_group_name` or `log_stream_name`. `variable` can be a map key name in the log message. To access sub-values in the map use the form `$(variable['subkey'])`. Also, it can be replaced with special values to insert the tag, ECS metadata or a random string in the name.
 
  Special Values:
- *  `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9. 
+ *  `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9.
  *  `$(uuid)` will insert a random string in the names. The random string is generated automatically with format: 4 bytes of time (seconds) + 16 random bytes. It is created when the plugin starts up and uniquely identifies the output - which means that until Fluent Bit is restarted, it will be the same. If you have multiple CloudWatch outputs, each one will get a unique UUID.
- * If your container is running in ECS, `$(variable)` can be set as `$(ecs_task_id)`, `$(ecs_cluster)` or `$(ecs_task_arn)`. It will set ECS metadata into `log_group_name` or `log_stream_name`. 
+ * If your container is running in ECS, `$(variable)` can be set as `$(ecs_task_id)`, `$(ecs_cluster)` or `$(ecs_task_arn)`. It will set ECS metadata into `log_group_name` or `log_stream_name`.
 
  Here is an example for `fluent-bit.conf`:
 

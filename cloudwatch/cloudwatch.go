@@ -121,7 +121,7 @@ type OutputPlugin struct {
 	logStreamName                 *fastTemplate
 	defaultLogStreamName          string
 	logKey                        string
-	client                        LogsClient
+	Client                        LogsClient
 	streams                       map[string]*logStream
 	groups                        map[string]struct{}
 	timer                         *plugins.Timeout
@@ -214,7 +214,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		defaultLogGroupName:           config.DefaultLogGroupName,
 		defaultLogStreamName:          config.DefaultLogStreamName,
 		logKey:                        config.LogKey,
-		client:                        client,
+		Client:                        client,
 		timer:                         timer,
 		streams:                       make(map[string]*logStream),
 		nextLogStreamCleanUpCheckTime: time.Now().Add(logStreamInactivityCheckInterval),
@@ -480,7 +480,7 @@ func (output *OutputPlugin) existingLogStream(e *Event) (*logStream, error) {
 
 func (output *OutputPlugin) describeLogStreams(e *Event, nextToken *string) (*cloudwatchlogs.DescribeLogStreamsOutput, error) {
 	output.timer.Check()
-	resp, err := output.client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
+	resp, err := output.Client.DescribeLogStreams(&cloudwatchlogs.DescribeLogStreamsInput{
 		LogGroupName:        aws.String(e.group),
 		LogStreamNamePrefix: aws.String(e.stream),
 		NextToken:           nextToken,
@@ -538,7 +538,7 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
 	output.timer.Check()
-	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
+	_, err := output.Client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(e.group),
 		LogStreamName: aws.String(e.stream),
 	})
@@ -567,7 +567,7 @@ func (output *OutputPlugin) createLogGroup(e *Event) error {
 		return nil
 	}
 
-	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
+	_, err := output.Client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(e.group),
 		Tags:         output.logGroupTags,
 	})
@@ -590,7 +590,7 @@ func (output *OutputPlugin) setLogGroupRetention(name string) error {
 		return nil
 	}
 
-	_, err := output.client.PutRetentionPolicy(&cloudwatchlogs.PutRetentionPolicyInput{
+	_, err := output.Client.PutRetentionPolicy(&cloudwatchlogs.PutRetentionPolicyInput{
 		LogGroupName:    aws.String(name),
 		RetentionInDays: aws.Int64(output.logGroupRetention),
 	})
@@ -710,7 +710,7 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 	sort.SliceStable(stream.logEvents, func(i, j int) bool {
 		return aws.Int64Value(stream.logEvents[i].Timestamp) < aws.Int64Value(stream.logEvents[j].Timestamp)
 	})
-	response, err := output.client.PutLogEvents(&cloudwatchlogs.PutLogEventsInput{
+	response, err := output.Client.PutLogEvents(&cloudwatchlogs.PutLogEventsInput{
 		LogEvents:     stream.logEvents,
 		LogGroupName:  aws.String(stream.logGroupName),
 		LogStreamName: aws.String(stream.logStreamName),
