@@ -141,6 +141,11 @@ func getBoolParam(ctx unsafe.Pointer, param string, defaultVal bool) bool {
 func FLBPluginInit(ctx unsafe.Pointer) int {
 	plugins.SetupLogger()
 
+	logrus.Debug("A new higher performance CloudWatch Logs plugin has been released; " +
+		"you are using the old plugin. Check out the new plugin's documentation and " +
+		"determine if you can migrate.\n" +
+		"https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch")
+
 	err := addPluginInstance(ctx)
 	if err != nil {
 		logrus.Error(err)

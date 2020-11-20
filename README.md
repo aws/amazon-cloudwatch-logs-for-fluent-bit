@@ -2,6 +2,8 @@
 
 ## Fluent Bit Plugin for CloudWatch Logs
 
+**NOTE: A new higher performance Fluent Bit CloudWatch Logs Plugin has been released.** Check out our [official guidance](#new-higher-performance-core-fluent-bit-plugin).
+
 A Fluent Bit output plugin for CloudWatch Logs
 
 #### Security disclosures
@@ -71,9 +73,9 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
  A template in the form of `$(variable)` can be set in `log_group_name` or `log_stream_name`. `variable` can be a map key name in the log message. To access sub-values in the map use the form `$(variable['subkey'])`. Also, it can be replaced with special values to insert the tag, ECS metadata or a random string in the name.
 
  Special Values:
- *  `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9. 
+ *  `$(tag)` references the full tag name, `$(tag[0])` and `$(tag[1])` are the first and second values of log tag split on periods. You may access any member by index, 0 through 9.
  *  `$(uuid)` will insert a random string in the names. The random string is generated automatically with format: 4 bytes of time (seconds) + 16 random bytes. It is created when the plugin starts up and uniquely identifies the output - which means that until Fluent Bit is restarted, it will be the same. If you have multiple CloudWatch outputs, each one will get a unique UUID.
- * If your container is running in ECS, `$(variable)` can be set as `$(ecs_task_id)`, `$(ecs_cluster)` or `$(ecs_task_arn)`. It will set ECS metadata into `log_group_name` or `log_stream_name`. 
+ * If your container is running in ECS, `$(variable)` can be set as `$(ecs_task_id)`, `$(ecs_cluster)` or `$(ecs_task_arn)`. It will set ECS metadata into `log_group_name` or `log_stream_name`.
 
  Here is an example for `fluent-bit.conf`:
 
@@ -98,6 +100,30 @@ And here is the resulting log stream name and log group name:
 log_group_name fluent-bit-cloudwatch-1jD7P6bbSRtbc9stkWjJZYerO6s-dummy.data
 log_stream_name from-fluent-bit-rice-37e873f6-37b4-42a7-af47-eac7275c6152-ecs-local-cluster
 ```
+
+### New Higher Performance Core Fluent Bit Plugin
+
+In the summer of 2020, we released a [new higher performance CloudWatch Logs plugin](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch) named `cloudwatch_logs`.
+
+That plugin has a core subset of the features of this older, lower performance and less efficient plugin. Check out its [documentation](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch).
+
+#### Do you plan to deprecate this older plugin?
+
+At this time, we do not. This plugin will continue to be supported. It contains features that have not been ported to the higher performance version. Specifically, [templating of log group name and streams](#templating-log-group-and-stream-names). Some users will continue to need the features of this plugin.
+
+#### Which plugin should I use?
+
+If the features of the higher performance plugin are sufficient for your use cases, please use it. It can achieve higher throughput and will consume less CPU and memory.
+
+#### How can I migrate to the higher performance plugin?
+
+It supports a subset of the options of this plugin. For many users, you can simply replace the plugin name `cloudwatch` with the new name `cloudwatch_logs`. Check out its [documentation](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch). 
+
+#### Do you accept contributions to both plugins?
+
+Yes. The high performance plugin is written in C, and this plugin is written in Golang. We understand that Go is an easier language for amateur contributors to write code in- that is a key reason why we are continuing to maintain it.
+
+However, if you can write code in C, please consider contributing new features to the [higher performance plugin](https://github.com/fluent/fluent-bit/tree/master/plugins/out_cloudwatch_logs).
 
 ### Fluent Bit Versions
 
