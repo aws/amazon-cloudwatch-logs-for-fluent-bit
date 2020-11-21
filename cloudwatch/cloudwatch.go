@@ -582,7 +582,7 @@ func (output *OutputPlugin) createLogGroup(e *Event) error {
 	}
 
 	logrus.Infof("[cloudwatch %d] Log group %s already exists\n", output.PluginInstanceID, e.group)
-	return nil
+	return output.setLogGroupRetention(e.group)
 }
 
 func (output *OutputPlugin) setLogGroupRetention(name string) error {
