@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.0
+* Enhancement - Add support for updating the retention policy of existing log groups (#121)
+
 ## 1.5.0
 * Feature - Automatically re-create CloudWatch log groups and log streams if they are deleted (#95)
 * Feature - Add default fallback log group and stream names (#99)
