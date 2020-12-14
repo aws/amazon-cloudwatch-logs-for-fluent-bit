@@ -1,6 +1,5 @@
-github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.0 h1:Q25kk8/znyCgZZwB5B6sRYgHQ2A74SAm6aF2mFnPtUM=
-github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.0/go.mod h1:fTZP67qM5Vpvi9gppI02s9Cfa0iQUm69UU8Du+yshzo=
-github.com/aws/aws-sdk-go v1.35.14/go.mod h1:tlPOdRjfxPBpNIwqDj61rmsnA85v9jc0Ps9+muhnW+k=
+github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1 h1:6/X+V7X2W2+e2IPCiyhbWhQIMikDkwQ5tPFlcJv2FBk=
+github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1/go.mod h1:alkjOObhCCp4KtT96XPWFi1PRRLUY0teGD8TWgroo2E=
 github.com/aws/aws-sdk-go v1.36.2 h1:UAeFPct+jHqWM+tgiqDrC9/sfbWj6wkcvpsJ+zdcsvA=
 github.com/aws/aws-sdk-go v1.36.2/go.mod h1:hcU610XS61/+aQV88ixoOzUoG7v3b31pl2zKMmprdro=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -52,8 +51,6 @@ golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACk
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/net v0.0.0-20190311183353-d8887717615a/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
 golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3/go.mod h1:t9HGtf8HONx5eT2rtn7q6eTqICYqUVnKs3thJo3Qplg=
-golang.org/x/net v0.0.0-20200202094626-16171245cfb2 h1:CCH4IOTTfewWjGOlSp+zGcjutRKlBEZQ6wTn8ozI/nI=
-golang.org/x/net v0.0.0-20200202094626-16171245cfb2/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
 golang.org/x/net v0.0.0-20201110031124-69a78807bb2b h1:uwuIcX0g4Yl1NC5XAz37xsr2lTtcqevgzYNVt49waME=
 golang.org/x/net v0.0.0-20201110031124-69a78807bb2b/go.mod h1:sp8m0HH+o8qH0wwXwYZr8TS3Oi6o0r6Gce1SSxlDquU=
 golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
