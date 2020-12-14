@@ -3,7 +3,7 @@ module github.com/aws/amazon-cloudwatch-logs-for-fluent-bit
 go 1.12
 
 require (
-	github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.0
+	github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1
 	github.com/aws/aws-sdk-go v1.36.2
 	github.com/fluent/fluent-bit-go v0.0.0-20200707230002-2a28684e2382
 	github.com/golang/mock v1.4.4
