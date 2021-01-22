@@ -10,7 +10,7 @@ require (
 	github.com/json-iterator/go v1.1.10
 	github.com/segmentio/ksuid v1.0.3
 	github.com/sirupsen/logrus v1.7.0
-	github.com/stretchr/testify v1.6.1
+	github.com/stretchr/testify v1.7.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasttemplate v1.2.1
 )
