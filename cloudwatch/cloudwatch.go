@@ -350,7 +350,6 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 			return fluentbit.FLB_RETRY
 		}
 	}
-	logrus.Debugf("[cloudwatch %d] Get ECS Metadata: %+v\n", output.PluginInstanceID, output.ecsMetadata)
 
 	// Step 4. Assign a log group and log stream name to the Event.
 	output.setGroupStreamNames(e)
