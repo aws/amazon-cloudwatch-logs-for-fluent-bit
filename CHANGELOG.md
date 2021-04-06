@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.1
+* Enhancement - Delete debug messages which make log info useless (#146)
+
 ## 1.6.0
 * Enhancement - Add support for updating the retention policy of existing log groups (#121)
 
