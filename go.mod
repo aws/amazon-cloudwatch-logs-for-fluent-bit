@@ -8,7 +8,7 @@ require (
 	github.com/fluent/fluent-bit-go v0.0.0-20201210173045-3fd1e0486df2
 	github.com/golang/mock v1.4.4
 	github.com/json-iterator/go v1.1.11
-	github.com/segmentio/ksuid v1.0.3
+	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/valyala/bytebufferpool v1.0.0
