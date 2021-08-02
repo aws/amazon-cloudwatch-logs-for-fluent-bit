@@ -171,6 +171,10 @@ func (config OutputPluginConfig) Validate() error {
 		return fmt.Errorf("log_stream_name or log_stream_prefix is required")
 	}
 
+	if config.LogStreamName != "" && config.LogStreamPrefix != "" {
+		return fmt.Errorf("either log_stream_name or log_stream_prefix can be configured. They cannot be provided together")
+	}
+
 	return nil
 }
 
