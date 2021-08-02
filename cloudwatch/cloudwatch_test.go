@@ -41,6 +41,84 @@ const (
 	testSequenceToken   = "sequence-token"
 )
 
+type configTest struct {
+	name          string
+	config        OutputPluginConfig
+	isValidConfig bool
+	expectedError string
+}
+
+var (
+	configValidationTestCases = []configTest{
+		{
+			name: "ValidConfiguration",
+			config: OutputPluginConfig{
+				Region:          testRegion,
+				LogGroupName:    testLogGroup,
+				LogStreamPrefix: testLogStreamPrefix,
+			},
+			isValidConfig: true,
+			expectedError: "",
+		},
+		{
+			name: "MissingRegion",
+			config: OutputPluginConfig{
+				LogGroupName:    testLogGroup,
+				LogStreamPrefix: testLogStreamPrefix,
+			},
+			isValidConfig: false,
+			expectedError: "region is a required parameter",
+		},
+		{
+			name: "MissingLogGroup",
+			config: OutputPluginConfig{
+				Region:          testRegion,
+				LogStreamPrefix: testLogStreamPrefix,
+			},
+			isValidConfig: false,
+			expectedError: "log_group_name is a required parameter",
+		},
+		{
+			name: "OnlyLogStreamNameProvided",
+			config: OutputPluginConfig{
+				Region:        testRegion,
+				LogGroupName:  testLogGroup,
+				LogStreamName: "testLogStream",
+			},
+			isValidConfig: true,
+		},
+		{
+			name: "OnlyLogStreamPrefixProvided",
+			config: OutputPluginConfig{
+				Region:          testRegion,
+				LogGroupName:    testLogGroup,
+				LogStreamPrefix: testLogStreamPrefix,
+			},
+			isValidConfig: true,
+		},
+		{
+			name: "LogStreamAndPrefixBothProvided",
+			config: OutputPluginConfig{
+				Region:          testRegion,
+				LogGroupName:    testLogGroup,
+				LogStreamName:   "testLogStream",
+				LogStreamPrefix: testLogStreamPrefix,
+			},
+			isValidConfig: false,
+			expectedError: "either log_stream_name or log_stream_prefix can be configured. They cannot be provided together",
+		},
+		{
+			name: "LogStreamAndPrefixBothMissing",
+			config: OutputPluginConfig{
+				Region:       testRegion,
+				LogGroupName: testLogGroup,
+			},
+			isValidConfig: false,
+			expectedError: "log_stream_name or log_stream_prefix is required",
+		},
+	}
+)
+
 // helper function to make a log stream/log group name template from a string.
 func testTemplate(template string) *fastTemplate {
 	t, _ := newTemplate(template)
@@ -660,4 +738,19 @@ func setupTimeout() *plugins.Timeout {
 		os.Exit(1)
 	})
 	return timer
+}
+
+func TestValidate(t *testing.T) {
+	for _, test := range configValidationTestCases {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.config.Validate()
+
+			if test.isValidConfig {
+				assert.Nil(t, err)
+			} else {
+				assert.NotNil(t, err)
+				assert.Equal(t, err.Error(), test.expectedError)
+			}
+		})
+	}
 }
