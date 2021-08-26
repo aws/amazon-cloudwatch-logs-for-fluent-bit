@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.6.2
+* Enhancement - Add validation to stop accepting both of `log_stream_name` and `log_stream_prefix` together (#190)
+
 ## 1.6.1
 * Enhancement - Delete debug messages which make log info useless (#146)
 
