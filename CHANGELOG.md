@@ -1,4 +1,6 @@
 # Changelog
+## 1.6.3
+* Enhancement - Upgrade Go version to 1.17
 
 ## 1.6.2
 * Enhancement - Add validation to stop accepting both of `log_stream_name` and `log_stream_prefix` together (#190)
