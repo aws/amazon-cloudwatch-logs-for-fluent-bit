@@ -14,6 +14,7 @@
 package cloudwatch
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -182,6 +183,144 @@ func TestTruncateLargeLogEvent(t *testing.T) {
 
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to be FLB_OK")
 	assert.Len(t, actualData, 256*1024-26, "Expected length is 256*1024-26")
+}
+
+func TestTruncateLargeLogEventWithSpecialCharacterOneTrailingFragments(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+
+	output := OutputPlugin{
+		logGroupName:    testTemplate(testLogGroup),
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		groups:          map[string]struct{}{testLogGroup: {}},
+	}
+
+	var b bytes.Buffer
+	for i := 0; i < 262095; i++ {
+		b.WriteString("x")
+	}
+	b.WriteString("𒁈zrgchimqigtm")
+
+	record := map[interface{}]interface{}{
+		"key": b.String(),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	actualData, err := output.processRecord(&Event{TS: time.Now(), Tag: testTag, Record: record})
+
+	if err != nil {
+		logrus.Debugf("[cloudwatch %d] Failed to process record: %v\n", output.PluginInstanceID, record)
+	}
+
+	/* invalid characters will be expanded when sent as request */
+	actualDataString := logString(actualData)
+	actualDataString = fmt.Sprintf("%q", actualDataString) /* converts: <invalid> -> \x<hex> */
+
+	exampleWorkingData := "{\"key\":\"x\"}"
+	addedLength := len(fmt.Sprintf("%q", exampleWorkingData)) - len(exampleWorkingData)
+
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to be FLB_OK")
+	assert.LessOrEqual(t, len(actualDataString), 256*1024-26+addedLength, "Expected length to be less than or equal to 256*1024-26")
+}
+
+func TestTruncateLargeLogEventWithSpecialCharacterTwoTrailingFragments(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+
+	output := OutputPlugin{
+		logGroupName:    testTemplate(testLogGroup),
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		groups:          map[string]struct{}{testLogGroup: {}},
+	}
+
+	var b bytes.Buffer
+	for i := 0; i < 262094; i++ {
+		b.WriteString("x")
+	}
+	b.WriteString("𒁈zrgchimqigtm")
+
+	record := map[interface{}]interface{}{
+		"key": b.String(),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	actualData, err := output.processRecord(&Event{TS: time.Now(), Tag: testTag, Record: record})
+
+	if err != nil {
+		logrus.Debugf("[cloudwatch %d] Failed to process record: %v\n", output.PluginInstanceID, record)
+	}
+
+	/* invalid characters will be expanded when sent as request */
+	actualDataString := logString(actualData)
+	actualDataString = fmt.Sprintf("%q", actualDataString) /* converts: <invalid> -> \x<hex> */
+
+	exampleWorkingData := "{\"key\":\"x\"}"
+	addedLength := len(fmt.Sprintf("%q", exampleWorkingData)) - len(exampleWorkingData)
+
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to be FLB_OK")
+	assert.LessOrEqual(t, len(actualDataString), 256*1024-26+addedLength, "Expected length to be less than or equal to 256*1024-26")
+}
+
+func TestTruncateLargeLogEventWithSpecialCharacterThreeTrailingFragments(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+
+	output := OutputPlugin{
+		logGroupName:    testTemplate(testLogGroup),
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		groups:          map[string]struct{}{testLogGroup: {}},
+	}
+
+	var b bytes.Buffer
+	for i := 0; i < 262093; i++ {
+		b.WriteString("x")
+	}
+	b.WriteString("𒁈zrgchimqigtm")
+
+	record := map[interface{}]interface{}{
+		"key": b.String(),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	actualData, err := output.processRecord(&Event{TS: time.Now(), Tag: testTag, Record: record})
+
+	if err != nil {
+		logrus.Debugf("[cloudwatch %d] Failed to process record: %v\n", output.PluginInstanceID, record)
+	}
+
+	/* invalid characters will be expanded when sent as request */
+	actualDataString := logString(actualData)
+	actualDataString = fmt.Sprintf("%q", actualDataString) /* converts: <invalid> -> \x<hex> */
+
+	exampleWorkingData := "{\"key\":\"x\"}"
+	addedLength := len(fmt.Sprintf("%q", exampleWorkingData)) - len(exampleWorkingData)
+
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to be FLB_OK")
+	assert.LessOrEqual(t, len(actualDataString), 256*1024-26+addedLength, "Expected length to be less than or equal to 256*1024-26")
 }
 
 func TestAddEventCreateLogGroup(t *testing.T) {
