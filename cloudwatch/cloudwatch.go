@@ -645,7 +645,24 @@ func (output *OutputPlugin) processRecord(e *Event) ([]byte, error) {
 	if (len(data) + perEventBytes) > maximumBytesPerEvent {
 		logrus.Warnf("[cloudwatch %d] Found record with %d bytes, truncating to 256KB, logGroup=%s, stream=%s\n",
 			output.PluginInstanceID, len(data)+perEventBytes, e.group, e.stream)
-		data = data[:(maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)]
+
+		/*
+		 * Find last byte of trailing unicode character via efficient byte scanning
+		 * Avoids corrupting rune
+		 *
+		 * A unicode character may be composed of 1 - 4 bytes
+		 *   bytes [11, 01, 00]xx xxxx: represent the first byte in a unicode character
+		 *   byte 10xx xxxx: represent all bytes following the first byte.
+		 *
+		 * nextByte is the first byte that is truncated,
+		 * so nextByte should be the start of a new unicode character in first byte format.
+		 */
+		nextByte := (maximumBytesPerEvent - len(truncatedSuffix) - perEventBytes)
+		for (data[nextByte]&0xc0 == 0x80) && nextByte > 0 {
+			nextByte--
+		}
+
+		data = data[:nextByte]
 		data = append(data, []byte(truncatedSuffix)...)
 	}
 
