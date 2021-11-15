@@ -1,4 +1,7 @@
 # Changelog
+## 1.6.4
+* Bug - Remove corrupted unicode fragments on truncation (#208)
+
 ## 1.6.3
 * Enhancement - Upgrade Go version to 1.17
 
