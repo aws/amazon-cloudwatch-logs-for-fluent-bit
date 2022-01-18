@@ -152,6 +152,7 @@ type OutputPluginConfig struct {
 	LogRetentionDays     int64
 	CWEndpoint           string
 	STSEndpoint          string
+	ExternalID           string
 	CredsEndpoint        string
 	PluginInstanceID     int
 	LogFormat            string
@@ -288,7 +289,11 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 	if config.RoleARN != "" {
 		logrus.Debugf("[cloudwatch %d] Fetching credentials for %s\n", config.PluginInstanceID, config.RoleARN)
 		stsConfig := &aws.Config{}
-		creds := stscreds.NewCredentials(svcSess, config.RoleARN)
+		creds := stscreds.NewCredentials(svcSess, config.RoleARN, func(p *stscreds.AssumeRoleProvider) {
+			if config.ExternalID != "" {
+				p.ExternalID = aws.String(config.ExternalID)
+			}
+		})
 		stsConfig.Credentials = creds
 		stsConfig.Region = aws.String(config.Region)
 		svcConfig = stsConfig
