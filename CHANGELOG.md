@@ -1,4 +1,7 @@
 # Changelog
+## 1.7.0
+* Feature - Add support for external_id (#226)
+
 ## 1.6.4
 * Bug - Remove corrupted unicode fragments on truncation (#208)
 
