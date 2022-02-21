@@ -1,8 +1,8 @@
 github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1 h1:6/X+V7X2W2+e2IPCiyhbWhQIMikDkwQ5tPFlcJv2FBk=
 github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1/go.mod h1:alkjOObhCCp4KtT96XPWFi1PRRLUY0teGD8TWgroo2E=
 github.com/aws/aws-sdk-go v1.36.2/go.mod h1:hcU610XS61/+aQV88ixoOzUoG7v3b31pl2zKMmprdro=
-github.com/aws/aws-sdk-go v1.42.44 h1:vPlF4cUsdN5ETfvb7ewZFbFZyB6Rsfndt3kS2XqLXKo=
-github.com/aws/aws-sdk-go v1.42.44/go.mod h1:OGr6lGMAKGlG9CVrYnWYDKIyb829c6EVBRjxqjmPepc=
+github.com/aws/aws-sdk-go v1.43.2 h1:T6LuKCNu8CYXXDn3xJoldh8FbdvuVH7C9aSuLNrlht0=
+github.com/aws/aws-sdk-go v1.43.2/go.mod h1:OGr6lGMAKGlG9CVrYnWYDKIyb829c6EVBRjxqjmPepc=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
