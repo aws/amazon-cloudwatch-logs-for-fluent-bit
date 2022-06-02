@@ -101,6 +101,43 @@ log_group_name fluent-bit-cloudwatch-1jD7P6bbSRtbc9stkWjJZYerO6s-dummy.data
 log_stream_name from-fluent-bit-rice-37e873f6-37b4-42a7-af47-eac7275c6152-ecs-local-cluster
 ```
 
+#### Templating Log Group and Stream Names based on Kubernetes metadata
+
+If you enable the kubernetes filter, then metadata like the following will be added to each log:
+
+```
+kubernetes: {
+    annotations: {
+        "kubernetes.io/psp": "eks.privileged"
+    },
+    container_hash: "<some hash>",
+    container_name: "myapp",
+    docker_id: "<some id>",
+    host: "ip-10-1-128-166.us-east-2.compute.internal",
+    labels: {
+        app: "myapp",
+        "pod-template-hash": "<some hash>"
+    },
+    namespace_name: "default",
+    pod_id: "198f7dd2-2270-11ea-be47-0a5d932f5920",
+    pod_name: "myapp-5468c5d4d7-n2swr"
+}
+```
+
+For help setting up Fluent Bit with kubernetes please see [Kubernetes Logging Powered by AWS for Fluent Bit](https://aws.amazon.com/blogs/containers/kubernetes-logging-powered-by-aws-for-fluent-bit/) or [Set up Fluent Bit as a DaemonSet to send logs to CloudWatch Logs](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Container-Insights-setup-logs-FluentBit.html).
+
+The kubernetes metadata can be referenced just like any other keys using the templating feature, for example, the following will result in a log group name which is `/eks/{namespace_name}/{pod_name}`. 
+
+```
+    [OUTPUT]
+      Name              cloudwatch
+      Match             kube.*
+      region            us-east-1
+      log_group_name    /eks/$(kubernetes['namespace_name'])/$(kubernetes['pod_name'])
+      log_stream_name   $(kubernetes['namespace_name'])/$(kubernetes['container_name'])
+      auto_create_group on
+```
+
 ### New Higher Performance Core Fluent Bit Plugin
 
 In the summer of 2020, we released a [new higher performance CloudWatch Logs plugin](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch) named `cloudwatch_logs`.
