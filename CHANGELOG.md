@@ -1,4 +1,8 @@
 # Changelog
+## 1.8.0
+* Feature - Add `auto_create_stream ` option (#257)
+* Bug - Allow recovery from a stream being deleted and created by a user (#257)
+
 ## 1.7.0
 * Feature - Add support for external_id (#226)
 
