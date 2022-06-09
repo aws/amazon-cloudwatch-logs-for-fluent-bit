@@ -756,7 +756,12 @@ func (output *OutputPlugin) putLogEvents(stream *logStream) error {
 			} else if awsErr.Code() == cloudwatchlogs.ErrCodeInvalidSequenceTokenException {
 				// sequence code is bad, grab the correct one and retry
 				parts := strings.Split(awsErr.Message(), " ")
-				stream.nextSequenceToken = &parts[len(parts)-1]
+				nextSequenceToken := &parts[len(parts)-1]
+				// If this is a new stream then the error will end like "The next expected sequenceToken is: null" and sequenceToken should be nil
+				if strings.HasPrefix(*nextSequenceToken, "null") {
+					nextSequenceToken = nil
+				}
+				stream.nextSequenceToken = nextSequenceToken
 
 				return output.putLogEvents(stream)
 			} else if awsErr.Code() == cloudwatchlogs.ErrCodeResourceNotFoundException {

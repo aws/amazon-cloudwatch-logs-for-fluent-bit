@@ -691,6 +691,46 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	output.Flush()
 }
 
+func TestAddEventAndFlushDataInvalidSequenceTokenNextNullException(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeInvalidSequenceTokenException, "The given sequenceToken is invalid; The next expected sequenceToken is: null", fmt.Errorf("API Error"))),
+		mockCloudWatch.EXPECT().PutLogEvents(gomock.Any()).Do(func(input *cloudwatchlogs.PutLogEventsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
+			assert.Nil(t, input.SequenceToken, "Expected sequence token to be nil")
+		}).Return(&cloudwatchlogs.PutLogEventsOutput{
+			NextSequenceToken: aws.String("token"),
+		}, nil),
+	)
+
+	output := OutputPlugin{
+		logGroupName:    testTemplate(testLogGroup),
+		logStreamPrefix: testLogStreamPrefix,
+		client:          mockCloudWatch,
+		timer:           setupTimeout(),
+		streams:         make(map[string]*logStream),
+		groups:          map[string]struct{}{testLogGroup: {}},
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	output.Flush()
+}
+
 func TestAddEventAndDataResourceNotFoundExceptionWithNoLogGroup(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
