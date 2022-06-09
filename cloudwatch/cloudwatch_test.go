@@ -130,18 +130,24 @@ func TestAddEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
-	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -156,18 +162,24 @@ func TestTruncateLargeLogEvent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
-	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -189,18 +201,24 @@ func TestTruncateLargeLogEventWithSpecialCharacterOneTrailingFragments(t *testin
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
-	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	var b bytes.Buffer
@@ -234,19 +252,24 @@ func TestTruncateLargeLogEventWithSpecialCharacterOneTrailingFragments(t *testin
 func TestTruncateLargeLogEventWithSpecialCharacterTwoTrailingFragments(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
-
-	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	var b bytes.Buffer
@@ -280,19 +303,24 @@ func TestTruncateLargeLogEventWithSpecialCharacterTwoTrailingFragments(t *testin
 func TestTruncateLargeLogEventWithSpecialCharacterThreeTrailingFragments(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
-
-	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-		assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil)
+	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil),
+	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	var b bytes.Buffer
@@ -330,6 +358,9 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 	gomock.InOrder(
 		mockCloudWatch.EXPECT().CreateLogGroup(gomock.Any()).Return(&cloudwatchlogs.CreateLogGroupOutput{}, nil),
 		mockCloudWatch.EXPECT().PutRetentionPolicy(gomock.Any()).Return(&cloudwatchlogs.PutRetentionPolicyOutput{}, nil),
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
@@ -345,6 +376,7 @@ func TestAddEventCreateLogGroup(t *testing.T) {
 		groups:            make(map[string]struct{}),
 		logGroupRetention: 14,
 		autoCreateGroup:   true,
+		autoCreateStream:  true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -362,10 +394,6 @@ func TestAddEventExistingStream(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
-		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeResourceAlreadyExistsException, "Log Stream already exists", fmt.Errorf("API Error"))),
 		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamNamePrefix), testLogStreamPrefix+testTag, "Expected log group name to match")
@@ -409,15 +437,64 @@ func TestAddEventExistingStream(t *testing.T) {
 
 }
 
+func TestAddEventDescribeStreamsException(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+	}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeResourceNotFoundException, "The specified log group does not exist.", fmt.Errorf("API Error")))
+
+	output := OutputPlugin{
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_OK")
+}
+
+func TestAddEventAutoCreateDisabled(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
+
+	mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+		assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+	}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil)
+	mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+	}).Return(&cloudwatchlogs.CreateLogStreamOutput{}, nil).Times(0)
+
+	output := OutputPlugin{
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: false,
+	}
+
+	record := map[interface{}]interface{}{
+		"somekey": []byte("some value"),
+	}
+
+	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
+	assert.Equal(t, retCode, fluentbit.FLB_RETRY, "Expected return code to FLB_RETRY")
+}
+
 func TestAddEventExistingStreamNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
-		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
-			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
-			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
-		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeResourceAlreadyExistsException, "Log Stream already exists", fmt.Errorf("API Error"))),
 		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamNamePrefix), testLogStreamPrefix+testTag, "Expected log group name to match")
@@ -440,15 +517,20 @@ func TestAddEventExistingStreamNotFound(t *testing.T) {
 				},
 			},
 		}, nil),
+		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log group name to match")
+		}).Return(nil, awserr.New(cloudwatchlogs.ErrCodeResourceAlreadyExistsException, "Log Stream already exists", fmt.Errorf("API Error"))),
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -488,6 +570,9 @@ func TestAddEventAndFlush(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -501,12 +586,13 @@ func TestAddEventAndFlush(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -623,6 +709,9 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -634,12 +723,13 @@ func TestAddEventAndFlushDataAlreadyAcceptedException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -656,6 +746,9 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -674,12 +767,13 @@ func TestAddEventAndFlushDataInvalidSequenceTokenException(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -696,6 +790,9 @@ func TestAddEventAndFlushDataInvalidSequenceTokenNextNullException(t *testing.T)
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -714,12 +811,13 @@ func TestAddEventAndFlushDataInvalidSequenceTokenNextNullException(t *testing.T)
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -736,6 +834,9 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogGroup(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -750,12 +851,13 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogGroup(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -771,6 +873,9 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogStream(t *testing.T) {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -786,12 +891,13 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogStream(t *testing.T) {
 	)
 
 	output := OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -893,6 +999,9 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	mockCloudWatch := mock_cloudwatch.NewMockLogsClient(ctrl)
 
 	gomock.InOrder(
+		mockCloudWatch.EXPECT().DescribeLogStreams(gomock.Any()).Do(func(input *cloudwatchlogs.DescribeLogStreamsInput) {
+			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
+		}).Return(&cloudwatchlogs.DescribeLogStreamsOutput{}, nil),
 		mockCloudWatch.EXPECT().CreateLogStream(gomock.Any()).AnyTimes().Do(func(input *cloudwatchlogs.CreateLogStreamInput) {
 			assert.Equal(t, aws.StringValue(input.LogGroupName), testLogGroup, "Expected log group name to match")
 			assert.Equal(t, aws.StringValue(input.LogStreamName), testLogStreamPrefix+testTag, "Expected log stream name to match")
@@ -901,12 +1010,13 @@ func setupLimitTestOutput(t *testing.T, times int) OutputPlugin {
 	)
 
 	return OutputPlugin{
-		logGroupName:    testTemplate(testLogGroup),
-		logStreamPrefix: testLogStreamPrefix,
-		client:          mockCloudWatch,
-		timer:           setupTimeout(),
-		streams:         make(map[string]*logStream),
-		groups:          map[string]struct{}{testLogGroup: {}},
+		logGroupName:     testTemplate(testLogGroup),
+		logStreamPrefix:  testLogStreamPrefix,
+		client:           mockCloudWatch,
+		timer:            setupTimeout(),
+		streams:          make(map[string]*logStream),
+		groups:           map[string]struct{}{testLogGroup: {}},
+		autoCreateStream: true,
 	}
 }
 

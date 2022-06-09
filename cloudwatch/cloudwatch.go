@@ -97,6 +97,11 @@ type TaskMetadata struct {
 	TaskID  string `json:"TaskID,omitempty"`
 }
 
+type streamDoesntExistError struct {
+	streamName string
+	groupName  string
+}
+
 func (stream *logStream) isExpired() bool {
 	if len(stream.logEvents) == 0 && stream.expiration.Before(time.Now()) {
 		return true
@@ -130,6 +135,7 @@ type OutputPlugin struct {
 	logGroupTags                  map[string]*string
 	logGroupRetention             int64
 	autoCreateGroup               bool
+	autoCreateStream              bool
 	bufferPool                    bytebufferpool.Pool
 	ecsMetadata                   TaskMetadata
 	runningInECS                  bool
@@ -148,6 +154,7 @@ type OutputPluginConfig struct {
 	LogKey               string
 	RoleARN              string
 	AutoCreateGroup      bool
+	AutoCreateStream     bool
 	NewLogGroupTags      string
 	LogRetentionDays     int64
 	CWEndpoint           string
@@ -227,6 +234,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		logGroupTags:                  tagKeysToMap(config.NewLogGroupTags),
 		logGroupRetention:             config.LogRetentionDays,
 		autoCreateGroup:               config.AutoCreateGroup,
+		autoCreateStream:              config.AutoCreateStream,
 		groups:                        make(map[string]struct{}),
 		ecsMetadata:                   TaskMetadata{},
 		runningInECS:                  runningInECS,
@@ -431,22 +439,23 @@ func (output *OutputPlugin) cleanUpExpiredLogStreams() {
 	}
 }
 
+func (err *streamDoesntExistError) Error() string {
+	return fmt.Sprintf("error: stream %s doesn't exist in log group %s", err.streamName, err.groupName)
+}
+
 func (output *OutputPlugin) getLogStream(e *Event) (*logStream, error) {
 	stream, ok := output.streams[e.group+e.stream]
 	if !ok {
-		// stream doesn't exist, create it
-		stream, err := output.createStream(e)
+		// assume the stream exists
+		stream, err := output.existingLogStream(e)
 		if err != nil {
-			if awsErr, ok := err.(awserr.Error); ok {
-				if awsErr.Code() == cloudwatchlogs.ErrCodeResourceAlreadyExistsException {
-					// existing stream
-					return output.existingLogStream(e)
-				}
+			// if it doesn't then create it
+			if _, ok := err.(*streamDoesntExistError); ok {
+				return output.createStream(e)
 			}
 		}
 		return stream, err
 	}
-
 	return stream, nil
 }
 
@@ -478,7 +487,11 @@ func (output *OutputPlugin) existingLogStream(e *Event) (*logStream, error) {
 		}
 
 		if stream == nil && resp.NextToken == nil {
-			return nil, fmt.Errorf("error: does not compute: Log Stream %s could not be created, but also could not be found in the log group", e.stream)
+			logrus.Infof("[cloudwatch %d] Log stream %s does not exist in log group %s", output.PluginInstanceID, e.stream, e.group)
+			return nil, &streamDoesntExistError{
+				streamName: e.stream,
+				groupName:  e.group,
+			}
 		}
 
 		nextToken = resp.NextToken
@@ -545,6 +558,9 @@ func (output *OutputPlugin) setGroupStreamNames(e *Event) {
 }
 
 func (output *OutputPlugin) createStream(e *Event) (*logStream, error) {
+	if !output.autoCreateStream {
+		return nil, fmt.Errorf("error: attempting to create log Stream %s in log group %s however auto_create_stream is disabled", e.stream, e.group)
+	}
 	output.timer.Check()
 	_, err := output.client.CreateLogStream(&cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(e.group),

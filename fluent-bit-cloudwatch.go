@@ -103,6 +103,9 @@ func getConfiguration(ctx unsafe.Pointer, pluginID int) cloudwatch.OutputPluginC
 	config.AutoCreateGroup = getBoolParam(ctx, "auto_create_group", false)
 	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_group = '%v'", pluginID, config.AutoCreateGroup)
 
+	config.AutoCreateStream = getBoolParam(ctx, "auto_create_stream", true)
+	logrus.Infof("[cloudwatch %d] plugin parameter auto_create_stream = '%v'", pluginID, config.AutoCreateStream)
+
 	config.NewLogGroupTags = output.FLBPluginConfigKey(ctx, "new_log_group_tags")
 	logrus.Infof("[cloudwatch %d] plugin parameter new_log_group_tags = '%s'", pluginID, config.NewLogGroupTags)
 
