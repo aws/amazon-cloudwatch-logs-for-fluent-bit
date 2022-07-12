@@ -136,7 +136,7 @@ The kubernetes metadata can be referenced just like any other keys using the tem
       region            us-east-1
       log_group_name    /eks/$(kubernetes['namespace_name'])/$(kubernetes['pod_name'])
       log_stream_name   $(kubernetes['namespace_name'])/$(kubernetes['container_name'])
-      auto_create_group on
+      auto_create_group true
 ```
 
 ### New Higher Performance Core Fluent Bit Plugin
