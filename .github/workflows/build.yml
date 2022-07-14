@@ -19,6 +19,9 @@ jobs:
         go-version: 1.17
       id: go
 
+    - name: Install cross-compiler for Windows
+      run: sudo apt-get install -y gcc-multilib gcc-mingw-w64
+
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
 
@@ -26,4 +29,4 @@ jobs:
       run: go get -u golang.org/x/lint/golint
 
     - name: Build
-      run: make build test
+      run: make build windows-release test

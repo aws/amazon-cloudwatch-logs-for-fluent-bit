@@ -11,6 +11,10 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
+# Build settings.
+GOARCH ?= amd64
+COMPILER ?= x86_64-w64-mingw32-gcc # Cross-compiler for Windows
+
 ROOT := $(shell pwd)
 
 all: build
@@ -18,6 +22,7 @@ all: build
 SCRIPT_PATH := $(ROOT)/scripts/:${PATH}
 SOURCES := $(shell find . -name '*.go')
 PLUGIN_BINARY := ./bin/cloudwatch.so
+PLUGIN_BINARY_WINDOWS := ./bin/cloudwatch.dll
 
 .PHONY: build
 build: $(PLUGIN_BINARY)
@@ -33,6 +38,12 @@ release:
 	mkdir -p ./bin
 	go build -buildmode c-shared -o $(PLUGIN_BINARY) ./
 	@echo "Built Amazon CloudWatch Logs Fluent Bit Plugin"
+
+.PHONY: windows-release
+windows-release:
+	mkdir -p ./bin
+	GOOS=windows GOARCH=$(GOARCH) CGO_ENABLED=1 CC=$(COMPILER) go build -buildmode c-shared -o $(PLUGIN_BINARY_WINDOWS) ./
+	@echo "Built Amazon CloudWatch Logs Fluent Bit Plugin for Windows"
 
 .PHONY: generate
 generate: $(SOURCES)
