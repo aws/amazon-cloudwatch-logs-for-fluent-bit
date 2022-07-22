@@ -1,4 +1,8 @@
 # Changelog
+
+## 1.9.0
+* Feature - Add support for building this plugin on Windows. *Note that this is only support in this plugin repo for Windows compilation.*
+
 ## 1.8.0
 * Feature - Add `auto_create_stream ` option (#257)
 * Bug - Allow recovery from a stream being deleted and created by a user (#257)
