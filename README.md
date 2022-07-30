@@ -22,6 +22,20 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 -p "auto_create_group=true"
 ```
 
+For building Windows binaries, we need to install `mingw-64w` for cross-compilation. The same can be done using-
+```
+sudo apt-get install -y gcc-multilib gcc-mingw-w64
+```
+After this step, run `make windows-release`. Then use with Fluent Bit on Windows:
+```
+./fluent-bit.exe -e ./cloudwatch.dll -i dummy `
+-o cloudwatch `
+-p "region=us-west-2" `
+-p "log_group_name=fluent-bit-cloudwatch" `
+-p "log_stream_name=testing" `
+-p "auto_create_group=true"
+```
+
 ### Plugin Options
 
 * `region`: The AWS region.
