@@ -161,7 +161,7 @@ That plugin has a core subset of the features of this older, lower performance a
 
 #### Do you plan to deprecate this older plugin?
 
-At this time, we do not. This plugin will continue to be supported. It contains features that have not been ported to the higher performance version. Specifically, [templating of log group name and streams](#templating-log-group-and-stream-names). Some users will continue to need the features of this plugin.
+At this time, we do not. This plugin will continue to be supported. It contains features that have not been ported to the higher performance version. Specifically, the feature for [templating of log group name and streams with ECS Metadata or values in the logs](#templating-log-group-and-stream-names). While [simple templating support](https://docs.fluentbit.io/manual/pipeline/outputs/cloudwatch#log-stream-and-group-name-templating-using-record_accessor-syntax) now exists in the high performance plugin, it does not have all of the features of the plugin in this repo. Some users will continue to need the features in this repo. 
 
 #### Which plugin should I use?
 
