@@ -22,7 +22,7 @@ Run `make` to build `./bin/cloudwatch.so`. Then use with Fluent Bit:
 -p "auto_create_group=true"
 ```
 
-For building Windows binaries, we need to install `mingw-64w` for cross-compilation. The same can be done using-
+For building Windows binaries, we need to install `mingw-w64` for cross-compilation. The same can be done using-
 ```
 sudo apt-get install -y gcc-multilib gcc-mingw-w64
 ```
