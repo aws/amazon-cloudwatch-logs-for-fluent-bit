@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.1
+* Enhancement - Added different base user agent for Linux and Windows
+
 ## 1.9.0
 * Feature - Add support for building this plugin on Windows. *Note that this is only support in this plugin repo for Windows compilation.*
 
