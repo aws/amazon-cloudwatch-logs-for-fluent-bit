@@ -58,6 +58,10 @@ const (
 	logStreamInactivityTimeout = time.Hour
 	// Check for expired log streams every 10 minutes
 	logStreamInactivityCheckInterval = 10 * time.Minute
+	// linuxBaseUserAgent is the base user agent string used for Linux.
+	linuxBaseUserAgent = "aws-fluent-bit-plugin"
+	// windowsBaseUserAgent is the base user agent string used for Windows.
+	windowsBaseUserAgent = "aws-fluent-bit-plugin-windows"
 )
 
 // LogsClient contains the CloudWatch API calls used by this plugin
@@ -324,16 +328,21 @@ func newCloudWatchLogsClient(config OutputPluginConfig) (*cloudwatchlogs.CloudWa
 func customUserAgentHandler(config OutputPluginConfig) request.NamedHandler {
 	const userAgentHeader = "User-Agent"
 
+	baseUserAgent := linuxBaseUserAgent
+	if runtime.GOOS == "windows" {
+		baseUserAgent = windowsBaseUserAgent
+	}
+
 	return request.NamedHandler{
 		Name: "ECSLocalEndpointsAgentHandler",
 		Fn: func(r *request.Request) {
 			currentAgent := r.HTTPRequest.Header.Get(userAgentHeader)
 			if config.ExtraUserAgent != "" {
 				r.HTTPRequest.Header.Set(userAgentHeader,
-					fmt.Sprintf("aws-fluent-bit-plugin-%s (%s) %s", config.ExtraUserAgent, runtime.GOOS, currentAgent))
+					fmt.Sprintf("%s-%s (%s) %s", baseUserAgent, config.ExtraUserAgent, runtime.GOOS, currentAgent))
 			} else {
 				r.HTTPRequest.Header.Set(userAgentHeader,
-					fmt.Sprintf("aws-fluent-bit-plugin (%s) %s", runtime.GOOS, currentAgent))
+					fmt.Sprintf("%s (%s) %s", baseUserAgent, runtime.GOOS, currentAgent))
 			}
 		},
 	}
