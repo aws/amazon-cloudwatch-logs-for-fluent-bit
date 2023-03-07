@@ -87,7 +87,7 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
 
 Buffering and retries are managed by the Fluent Bit core engine, not by the plugin. Whenever the plugin encounters any error, it returns a retry to the engine which schedules a retry. This means that log group creation, log stream creation or log retention policy calls can consume a retry if they fail.
 
-* [Fluent Bit upstream documentation on Retries](https://docs.fluentbit.io/manual/administration/scheduling-and-retries)
+* [Fluent Bit upstream documentation on retries](https://docs.fluentbit.io/manual/administration/scheduling-and-retries)
 * [Fluent Bit upstream documentation on buffering](https://docs.fluentbit.io/manual/administration/buffering-and-storage)
 * [FireLens OOMKill prevent example for buffering](https://github.com/aws-samples/amazon-ecs-firelens-examples/tree/mainline/examples/fluent-bit/oomkill-prevention)
 
