@@ -83,6 +83,14 @@ This plugin uses the AWS SDK Go, and uses its [default credential provider chain
 * `FLB_LOG_LEVEL`: Set the log level for the plugin. Valid values are: `debug`, `info`, and `error` (case insensitive). Default is `info`. **Note**: Setting log level in the Fluent Bit Configuration file using the Service key will not affect the plugin log level (because the plugin is external).
 * `SEND_FAILURE_TIMEOUT`: Allows you to configure a timeout if the plugin can not send logs to CloudWatch. The timeout is specified as a [Golang duration](https://golang.org/pkg/time/#ParseDuration), for example: `5m30s`. If the plugin has failed to make any progress for the given period of time, then it will exit and kill Fluent Bit. This is useful in scenarios where you want your logging solution to fail fast if it has been misconfigured (i.e. network or credentials have not been set up to allow it to send to CloudWatch).
 
+### Retries and Buffering
+
+Buffering and retries are managed by the Fluent Bit core engine, not by the plugin. Whenever the plugin encounters any error, it returns a retry to the engine which schedules a retry. This means that log group creation, log stream creation or log retention policy calls can consume a retry if they fail.
+
+* [Fluent Bit upstream documentation on Retries](https://docs.fluentbit.io/manual/administration/scheduling-and-retries)
+* [Fluent Bit upstream documentation on buffering](https://docs.fluentbit.io/manual/administration/buffering-and-storage)
+* [FireLens OOMKill prevent example for buffering](https://github.com/aws-samples/amazon-ecs-firelens-examples/tree/mainline/examples/fluent-bit/oomkill-prevention)
+
 ### Templating Log Group and Stream Names
 
  A template in the form of `$(variable)` can be set in `log_group_name` or `log_stream_name`. `variable` can be a map key name in the log message. To access sub-values in the map use the form `$(variable['subkey'])`. Also, it can be replaced with special values to insert the tag, ECS metadata or a random string in the name.
