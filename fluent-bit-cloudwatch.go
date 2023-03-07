@@ -212,7 +212,7 @@ func FLBPluginFlushCtx(ctx, data unsafe.Pointer, length C.int, tag *C.char) int 
 	// Return options:
 	//
 	// output.FLB_OK    = data have been processed.
-	// output.FLB_ERROR = unrecoverable error, do not try this again.
+	// output.FLB_ERROR = unrecoverable error, do not try this again. Never returned by flush.
 	// output.FLB_RETRY = retry to flush later.
 	return output.FLB_OK
 }

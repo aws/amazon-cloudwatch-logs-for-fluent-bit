@@ -386,7 +386,7 @@ func (output *OutputPlugin) AddEvent(e *Event) int {
 
 		if err := output.createLogGroup(e); err != nil {
 			logrus.Error(err)
-			return fluentbit.FLB_ERROR
+			return fluentbit.FLB_RETRY
 		}
 
 		output.groups[e.group] = struct{}{}
