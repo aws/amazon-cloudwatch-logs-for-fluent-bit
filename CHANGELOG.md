@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.2
+* Bug - Fixed Log Loss can occur when log group creation or retention policy API calls fail. (#314)
+
 ## 1.9.1
 * Enhancement - Added different base user agent for Linux and Windows
 
