@@ -1,6 +1,6 @@
 module github.com/aws/amazon-cloudwatch-logs-for-fluent-bit
 
-go 1.17
+go 1.20
 
 require (
 	github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1

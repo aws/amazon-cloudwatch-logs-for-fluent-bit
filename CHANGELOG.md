@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.3
+* Enhancement - Upgrade Go version to 1.20
+
 ## 1.9.2
 * Bug - Fixed Log Loss can occur when log group creation or retention policy API calls fail. (#314)
 
