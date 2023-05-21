@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aws/amazon-kinesis-firehose-for-fluent-bit/plugins"
 	"github.com/aws/aws-sdk-go/aws"
@@ -841,8 +842,19 @@ func (output *OutputPlugin) processRejectedEventsInfo(response *cloudwatchlogs.P
 	}
 }
 
+// counts the effective number of bytes in the string, after
+// UTF-8 normalization.  UTF-8 normalization includes replacing bytes that do
+// not constitute valid UTF-8 encoded Unicode codepoints with the Unicode
+// replacement codepoint U+FFFD (a 3-byte UTF-8 sequence, represented in Go as
+// utf8.RuneError)
+// this works because Go range will parse the string as UTF-8 runes
+// copied from AWSLogs driver: https://github.com/moby/moby/commit/1e8ef386279e2e28aff199047e798fad660efbdd
 func cloudwatchLen(event string) int {
-	return len(event) + perEventBytes
+	effectiveBytes := perEventBytes
+	for _, rune := range event {
+		effectiveBytes += utf8.RuneLen(rune)
+	}
+	return effectiveBytes
 }
 
 func (stream *logStream) logBatchSpan(timestamp time.Time) time.Duration {
