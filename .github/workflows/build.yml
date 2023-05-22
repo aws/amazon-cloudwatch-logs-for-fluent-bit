@@ -20,7 +20,7 @@ jobs:
       id: go
 
     - name: Install cross-compiler for Windows
-      run: sudo apt-get install -y gcc-multilib gcc-mingw-w64
+      run: sudo apt-get update && sudo apt-get install -y -o Acquire::Retries=3 gcc-multilib gcc-mingw-w64
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
