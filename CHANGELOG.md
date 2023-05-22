@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.9.4
+* Bug - Fix utf-8 calculation of payload length to account for invalid unicode bytes that will be replaced with the 3 byte unicode replacement character. This bug can lead to an `InvalidParameterException` from CloudWatch when the payload sent is calculated to be over the limit due to character replacement.
+
 ## 1.9.3
 * Enhancement - Upgrade Go version to 1.20
 
