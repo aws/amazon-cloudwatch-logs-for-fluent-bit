@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/aws/amazon-kinesis-firehose-for-fluent-bit v1.5.1
-	github.com/aws/aws-sdk-go v1.44.267
+	github.com/aws/aws-sdk-go v1.44.289
 	github.com/fluent/fluent-bit-go v0.0.0-20201210173045-3fd1e0486df2
 	github.com/golang/mock v1.4.4
 	github.com/json-iterator/go v1.1.12
