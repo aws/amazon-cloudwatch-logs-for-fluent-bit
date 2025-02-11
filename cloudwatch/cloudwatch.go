@@ -146,6 +146,7 @@ type OutputPlugin struct {
 	runningInECS                  bool
 	uuid                          string
 	extraUserAgent                string
+	logGroupClass                 string
 }
 
 // OutputPluginConfig is the input information used by NewOutputPlugin to create a new OutputPlugin
@@ -169,6 +170,7 @@ type OutputPluginConfig struct {
 	PluginInstanceID     int
 	LogFormat            string
 	ExtraUserAgent       string
+	LogGroupClass        string
 }
 
 // Validate checks the configuration input for an OutputPlugin instances
@@ -186,6 +188,10 @@ func (config OutputPluginConfig) Validate() error {
 
 	if config.LogStreamName != "" && config.LogStreamPrefix != "" {
 		return fmt.Errorf("either log_stream_name or log_stream_prefix can be configured. They cannot be provided together")
+	}
+
+	if config.LogGroupClass != "" && config.LogGroupClass != "STANDARD" && config.LogGroupClass != "INFREQUENT_ACCESS" {
+		return fmt.Errorf("log_group_class must be either empty or one of: STANDARD, INFREQUENT_ACCESS")
 	}
 
 	return nil
@@ -245,6 +251,7 @@ func NewOutputPlugin(config OutputPluginConfig) (*OutputPlugin, error) {
 		runningInECS:                  runningInECS,
 		uuid:                          ksuid.New().String(),
 		extraUserAgent:                config.ExtraUserAgent,
+		logGroupClass:                 config.LogGroupClass,
 	}, nil
 }
 
@@ -601,10 +608,17 @@ func (output *OutputPlugin) createLogGroup(e *Event) error {
 		return nil
 	}
 
-	_, err := output.client.CreateLogGroup(&cloudwatchlogs.CreateLogGroupInput{
+	input := &cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(e.group),
 		Tags:         output.logGroupTags,
-	})
+	}
+
+	// Only set LogGroupClass if it's specified in the config
+	if output.logGroupClass != "" {
+		input.LogGroupClass = aws.String(output.logGroupClass)
+	}
+
+	_, err := output.client.CreateLogGroup(input)
 	if err == nil {
 		logrus.Infof("[cloudwatch %d] Created log group %s\n", output.PluginInstanceID, e.group)
 		return output.setLogGroupRetention(e.group)
