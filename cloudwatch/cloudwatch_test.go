@@ -858,6 +858,7 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogGroup(t *testing.T) {
 		streams:          make(map[string]*logStream),
 		groups:           map[string]struct{}{testLogGroup: {}},
 		autoCreateStream: true,
+		autoCreateGroup:  true,
 	}
 
 	record := map[interface{}]interface{}{
@@ -866,6 +867,10 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogGroup(t *testing.T) {
 
 	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	// Flush triggers PutLogEvents which will encounter the ResourceNotFoundException
+	err := output.Flush()
+	// After creating the missing log group, the code returns an error and expects retry on next flush
+	assert.Error(t, err, "Expected error after flush when log group is missing")
 }
 
 func TestAddEventAndDataResourceNotFoundExceptionWithNoLogStream(t *testing.T) {
@@ -906,6 +911,10 @@ func TestAddEventAndDataResourceNotFoundExceptionWithNoLogStream(t *testing.T) {
 
 	retCode := output.AddEvent(&Event{TS: time.Now(), Tag: testTag, Record: record})
 	assert.Equal(t, retCode, fluentbit.FLB_OK, "Expected return code to FLB_OK")
+	// Flush triggers PutLogEvents which will encounter the ResourceNotFoundException
+	err := output.Flush()
+	// After creating the missing log stream, the code returns an error and expects retry on next flush
+	assert.Error(t, err, "Expected error after flush when log stream is missing")
 }
 
 func TestAddEventAndBatchSpanLimit(t *testing.T) {
