@@ -11,7 +11,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.3
-	github.com/stretchr/testify v1.8.3
+	github.com/stretchr/testify v1.11.1
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasttemplate v1.2.2
 	golang.org/x/sys v0.40.0 // indirect
